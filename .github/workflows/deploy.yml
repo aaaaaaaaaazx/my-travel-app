@@ -1,0 +1,38 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main # 當你 push 到 main 分支時觸發
+
+permissions:
+  contents: write # 賦予腳本寫入 gh-pages 分支的權限
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4
+
+      - name: Setup Node ⚙️
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install and Build 🔧
+        run: |
+          npm install
+          npm run build
+        env:
+          # 將 GitHub Secrets 中的資料注入到編譯環境變數中
+          VITE_FIREBASE_CONFIG: ${{ secrets.VITE_FIREBASE_CONFIG }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist # Vite 編譯後輸出的資料夾名稱
+          branch: gh-pages # 部署到的目標分支
