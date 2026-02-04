@@ -17,15 +17,14 @@ import {
 import { 
   Plane, Calendar, Plus, Trash2, Clock, Share2, 
   Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon, ChevronRight,
-  Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown, ExternalLink, Edit3, Save, MapPin
+  Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown, ExternalLink, Edit3, Save, MapPin, Search
 } from 'lucide-react';
 
 /**
- * 🚀 功能全面升級版：
- * 1. 結構化景點：支援「主項目」與「詳細說明」。
- * 2. 內建編輯：支援卡片點擊即時編輯。
- * 3. 地圖對接：自動產生 Google Maps 搜尋連結。
- * 4. 排序與置頂：維持航班置頂與手動排序功能。
+ * 🚀 功能全面進化版：
+ * 1. AI 天氣修復：強化 Gemini API 請求穩定性。
+ * 2. 航班 AI 助手：輸入航班編號自動偵測航空公司與航線資訊。
+ * 3. 結構化行程：支援景點主標題、詳細說明、排序與 Google 地圖連結。
  */
 
 const getFirebaseConfig = () => {
@@ -55,7 +54,8 @@ const db = getFirestore(app);
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
 const appId = rawAppId.replace(/\//g, '_');
 
-const apiKey = ""; // Gemini API Key
+// 💡 注意：請在此填入您的 Gemini API Key
+const apiKey = ""; 
 
 const App = () => {
   const [view, setView] = useState('home');
@@ -64,15 +64,15 @@ const App = () => {
   const [trips, setTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isFlightAiLoading, setIsFlightAiLoading] = useState(false);
   const [activeDay, setActiveDay] = useState(1);
   const [tripInfo, setTripInfo] = useState({ country: '', city: '', startDate: '', duration: 3 });
   const [itinerary, setItinerary] = useState({});
   const [newEntry, setNewEntry] = useState({ time: '09:00', spot: '', note: '' });
-  const [newFlight, setNewFlight] = useState({ flightNo: '', time: '08:00', type: '起飛' });
+  const [newFlight, setNewFlight] = useState({ flightNo: '', time: '08:00', type: '起飛', aiInfo: '' });
   const [editingId, setEditingId] = useState(null);
   const [tempEditData, setTempEditData] = useState({});
 
-  // 🛠 樣式重設與注入
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script');
@@ -89,7 +89,6 @@ const App = () => {
     document.head.appendChild(style);
   }, []);
 
-  // 1. 身份驗證
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -105,7 +104,6 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. 監聽清單
   useEffect(() => {
     if (!user || !db) return;
     const tripsRef = collection(db, 'artifacts', appId, 'public', 'data', 'trips');
@@ -115,7 +113,6 @@ const App = () => {
     });
   }, [user]);
 
-  // 3. 監聽行程
   useEffect(() => {
     if (!user || !tripId || !db) return;
     const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
@@ -169,11 +166,6 @@ const App = () => {
     setNewEntry({ time: '09:00', spot: '', note: '' });
   };
 
-  const startEditing = (item) => {
-    setEditingId(item.id);
-    setTempEditData({ ...item });
-  };
-
   const saveEdit = async () => {
     if (!user || !tripId || !db) return;
     const dayData = itinerary[activeDay];
@@ -205,26 +197,61 @@ const App = () => {
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
       [`days.${activeDay}.flights`]: updatedFlights
     });
-    setNewFlight({ flightNo: '', time: '08:00', type: '起飛' });
+    setNewFlight({ flightNo: '', time: '08:00', type: '起飛', aiInfo: '' });
   };
 
-  const getAiWeather = async () => {
-    if (!user || !apiKey || isAiLoading) return;
-    setIsAiLoading(true);
-    const dateStr = getFormattedDate(tripInfo.startDate, activeDay);
-    const prompt = `提供 ${tripInfo.city} 在 ${dateStr} 的天氣預測 JSON: {"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
+  // ✈️ AI 航班查詢助手
+  const getAiFlightInfo = async () => {
+    if (!apiKey || !newFlight.flightNo || isFlightAiLoading) return;
+    setIsFlightAiLoading(true);
+    const prompt = `請根據航班編號「${newFlight.flightNo}」提供航班資訊。
+    請回答：這是哪家航空公司？起點與終點城市在哪？飛行時間大約多久？
+    請以精簡的一句話回答，例如：「長榮航空從台北飛往東京，航程約 3.5 小時。」`;
+
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      });
+      const result = await response.json();
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "無法獲取航班資訊";
+      setNewFlight(prev => ({ ...prev, aiInfo: text }));
+    } catch (err) {
+      console.error("Flight AI 錯誤", err);
+    } finally {
+      setIsFlightAiLoading(false);
+    }
+  };
+
+  // 🌦 AI 天氣預測修復
+  const getAiWeather = async () => {
+    if (!apiKey || isAiLoading) return;
+    setIsAiLoading(true);
+    const dateStr = getFormattedDate(tripInfo.startDate, activeDay);
+    const prompt = `請提供「${tripInfo.city}」在「${dateStr}」的天氣預測。
+    必須輸出 JSON 格式且包含以下欄位：{"temp": "氣溫", "condition": "天氣狀態(如: 晴天)", "tips": "穿衣建議"}。
+    請不要輸出額外文字。`;
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
       });
       const result = await response.json();
       const weatherData = JSON.parse(result.candidates[0].content.parts[0].text);
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
         [`days.${activeDay}.weather`]: weatherData
       });
-    } catch (err) { console.error(err); } finally { setIsAiLoading(false); }
+    } catch (err) {
+      console.error("Weather AI 錯誤", err);
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const deleteEntry = async (entryId, type = 'spots') => {
@@ -241,7 +268,7 @@ const App = () => {
       {!user ? (
         <div className="flex flex-col items-center justify-center h-screen space-y-4">
            <Loader2 className="animate-spin text-blue-600" size={48} />
-           <p className="text-slate-500 font-bold tracking-widest">安全連線中...</p>
+           <p className="text-slate-500 font-bold tracking-widest italic">正在連接雲端資料庫...</p>
         </div>
       ) : view === 'home' ? (
         <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-in fade-in duration-700">
@@ -279,8 +306,8 @@ const App = () => {
                     <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
                   </div>
                 </div>
-                <button disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl transition-all active:scale-95">
-                  {isLoading ? <Loader2 className="animate-spin mx-auto" /> : <><Plus size={24}/> 開始旅程</>}
+                <button disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-2">
+                  {isLoading ? <Loader2 className="animate-spin" size={24}/> : <><Plus size={24}/> 開始旅程</>}
                 </button>
               </form>
             </div>
@@ -298,7 +325,7 @@ const App = () => {
                       </div>
                       <div>
                         <h4 className="text-xl font-black text-slate-800 tracking-tight">{trip.city} 之旅</h4>
-                        <p className="text-[10px] font-bold text-slate-400">{trip.country} · {trip.startDate}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{trip.country} · {trip.startDate}</p>
                       </div>
                     </div>
                     <ChevronRight className="text-slate-200 group-hover:text-blue-600" />
@@ -338,22 +365,34 @@ const App = () => {
               <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-6 text-slate-50 transition-transform group-hover:scale-110"><PlaneTakeoff size={80} /></div>
                 <div className="relative z-10">
-                    <h4 className="text-xs font-black text-slate-300 uppercase tracking-[0.2em] mb-4">當日航班資訊</h4>
+                    <h4 className="text-xs font-black text-slate-300 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      <Plane size={14}/> 航班管理
+                    </h4>
                     <div className="space-y-3">
                         {itinerary[activeDay]?.flights?.map(f => (
-                            <div key={f.id} className="flex items-center justify-between bg-slate-50 px-4 py-3 rounded-2xl border">
-                                <div className="flex items-center gap-3">
-                                    <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-black uppercase">{f.type}</span>
-                                    <span className="font-black text-slate-800">{f.flightNo}</span>
-                                    <span className="text-xs text-slate-400 font-bold">{f.time}</span>
+                            <div key={f.id} className="bg-slate-50 px-5 py-4 rounded-2xl border border-slate-100 group/flight">
+                                <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[9px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-black">{f.type}</span>
+                                        <span className="font-black text-slate-800 text-lg">{f.flightNo}</span>
+                                        <span className="text-xs text-slate-400 font-bold">{f.time}</span>
+                                    </div>
+                                    <button onClick={() => deleteEntry(f.id, 'flights')} className="text-slate-200 hover:text-red-500 opacity-0 group-flight:opacity-100 transition-all"><Trash2 size={16}/></button>
                                 </div>
-                                <button onClick={() => deleteEntry(f.id, 'flights')} className="text-slate-200 hover:text-red-500"><Trash2 size={16}/></button>
+                                {f.aiInfo && <p className="text-[11px] text-slate-400 font-medium italic mt-1 bg-white p-2 rounded-lg border border-slate-50">{f.aiInfo}</p>}
                             </div>
                         ))}
-                        <form onSubmit={addFlight} className="flex gap-2">
-                            <input required placeholder="航班" className="flex-1 bg-slate-50 border rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/10" value={newFlight.flightNo} onChange={e => setNewFlight({...newFlight, flightNo: e.target.value})} />
-                            <input type="time" className="bg-slate-50 border rounded-xl px-4 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/10" value={newFlight.time} onChange={e => setNewFlight({...newFlight, time: e.target.value})} />
-                            <button type="submit" className="bg-slate-900 text-white p-2 rounded-xl hover:bg-black transition-colors"><Plus size={16}/></button>
+                        <form onSubmit={addFlight} className="space-y-2">
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                  <input required placeholder="航班編號 (如: BR198)" className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-10 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/10" value={newFlight.flightNo} onChange={e => setNewFlight({...newFlight, flightNo: e.target.value.toUpperCase()})} />
+                                  <button type="button" onClick={getAiFlightInfo} className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-500 hover:scale-110 transition-transform">
+                                    {isFlightAiLoading ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>}
+                                  </button>
+                                </div>
+                                <input type="time" className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold outline-none" value={newFlight.time} onChange={e => setNewFlight({...newFlight, time: e.target.value})} />
+                                <button type="submit" className="bg-slate-900 text-white px-4 rounded-xl hover:bg-black transition-colors"><Plus size={16}/></button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -363,19 +402,25 @@ const App = () => {
               <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-6 text-blue-50 transition-transform group-hover:scale-110"><Cloud size={80} /></div>
                 <div className="relative z-10">
-                    <h4 className="text-xs font-black text-slate-300 uppercase tracking-[0.2em] mb-4">當日天氣預測</h4>
+                    <h4 className="text-xs font-black text-slate-300 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                      <Sun size={14}/> 天氣預測
+                    </h4>
                     {itinerary[activeDay]?.weather ? (
                         <div className="flex items-center gap-6">
-                            <div className="text-4xl font-black text-slate-900">{itinerary[activeDay].weather.temp}</div>
+                            <div className="text-5xl font-black text-slate-900">{itinerary[activeDay].weather.temp}</div>
                             <div className="text-slate-500 font-bold text-sm">
-                                <p className="text-blue-600 flex items-center gap-1"><Sun size={16}/> {itinerary[activeDay].weather.condition}</p>
-                                <p className="text-xs mt-1 text-slate-400 leading-tight">{itinerary[activeDay].weather.tips}</p>
+                                <p className="text-blue-600 flex items-center gap-1 font-black text-lg">{itinerary[activeDay].weather.condition}</p>
+                                <p className="text-[11px] mt-1 text-slate-400 leading-tight">{itinerary[activeDay].weather.tips}</p>
                             </div>
                         </div>
                     ) : (
-                        <button onClick={getAiWeather} disabled={isAiLoading} className="bg-blue-50 text-blue-600 px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 hover:bg-blue-100">
-                            {isAiLoading ? <Loader2 className="animate-spin" size={16}/> : <Sparkles size={16}/>} 獲取 AI 天氣建議
-                        </button>
+                        <div className="py-4">
+                           <button onClick={getAiWeather} disabled={isAiLoading || !apiKey} className={`w-full ${!apiKey ? 'bg-slate-50 text-slate-300' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'} px-6 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all`}>
+                                {isAiLoading ? <Loader2 className="animate-spin" size={18}/> : <Sparkles size={18}/>} 
+                                {apiKey ? "獲取 AI 天氣建議" : "請先設定 API Key"}
+                           </button>
+                           {!apiKey && <p className="text-[10px] text-red-400 mt-2 text-center font-bold">需在程式碼中填入 apiKey 才能使用</p>}
+                        </div>
                     )}
                 </div>
               </div>
@@ -392,19 +437,19 @@ const App = () => {
               </div>
 
               {/* 新增行程表單 */}
-              <form onSubmit={addEntry} className="mb-14 space-y-4 bg-slate-50 p-6 rounded-[2.5rem]">
+              <form onSubmit={addEntry} className="mb-14 space-y-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100">
                 <div className="flex gap-4 flex-wrap md:flex-nowrap">
                    <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-2xl shadow-sm border w-full md:w-auto">
                     <Clock size={20} className="text-blue-500" />
                     <input type="time" value={newEntry.time} onChange={e => setNewEntry({...newEntry, time: e.target.value})} className="bg-transparent font-black text-slate-700 outline-none w-28 text-lg" />
                   </div>
-                  <input placeholder="今天要在那裡留下回憶？" required value={newEntry.spot} onChange={e => setNewEntry({...newEntry, spot: e.target.value})} className="flex-1 p-4 bg-white border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 text-lg shadow-sm" />
+                  <input placeholder="今天要在那裡留下回憶？" required value={newEntry.spot} onChange={e => setNewEntry({...newEntry, spot: e.target.value})} className="flex-1 p-4 bg-white border border-slate-200 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 text-lg shadow-sm" />
                 </div>
                 <div className="flex gap-4">
-                  <textarea placeholder="詳細說明或備註 (選填)" value={newEntry.note} onChange={e => setNewEntry({...newEntry, note: e.target.value})} className="flex-1 p-4 bg-white border border-slate-100 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-blue-500/5 text-sm shadow-sm h-24 resize-none" />
-                  <button type="submit" className="bg-slate-900 hover:bg-black text-white px-12 py-4 rounded-2xl font-black transition-all shadow-xl active:scale-95 shrink-0 text-lg flex flex-col items-center justify-center gap-1">
-                    <Plus size={24}/>
-                    <span className="text-xs">加入</span>
+                  <textarea placeholder="詳細說明或備註 (選填，例如：門票預約資訊、必買清單...)" value={newEntry.note} onChange={e => setNewEntry({...newEntry, note: e.target.value})} className="flex-1 p-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-blue-500/5 text-sm shadow-sm h-24 resize-none" />
+                  <button type="submit" className="bg-slate-900 hover:bg-black text-white px-10 py-4 rounded-2xl font-black transition-all shadow-xl active:scale-95 shrink-0 text-lg flex flex-col items-center justify-center gap-1">
+                    <Plus size={28}/>
+                    <span className="text-[10px] uppercase tracking-widest font-black">Add</span>
                   </button>
                 </div>
               </form>
@@ -413,19 +458,18 @@ const App = () => {
               <div className="space-y-10 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full">
                 {itinerary[activeDay]?.spots?.map((item, idx) => (
                   <div key={item.id} className="relative pl-20 group">
-                    {/* 左側排序控制 */}
+                    {/* 左側排序與時間控制 */}
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
-                       <button onClick={() => moveEntry(idx, -1)} className="p-1 hover:bg-blue-50 text-slate-200 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"><ArrowUp size={16}/></button>
+                       <button onClick={() => moveEntry(idx, -1)} className="p-1.5 hover:bg-blue-50 text-slate-200 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100 rounded-full"><ArrowUp size={16}/></button>
                        <div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md z-10 group-hover:scale-110 transition-transform">
                           {editingId === item.id ? <Edit3 size={16} className="animate-pulse" /> : item.time}
                        </div>
-                       <button onClick={() => moveEntry(idx, 1)} className="p-1 hover:bg-blue-50 text-slate-200 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"><ArrowDown size={16}/></button>
+                       <button onClick={() => moveEntry(idx, 1)} className="p-1.5 hover:bg-blue-50 text-slate-200 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100 rounded-full"><ArrowDown size={16}/></button>
                     </div>
 
                     {/* 景點卡片內容 */}
-                    <div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-4 ring-blue-50' : 'border-slate-100 hover:shadow-2xl hover:-translate-y-2 border-l-8 border-l-transparent hover:border-l-blue-600 shadow-sm'}`}>
+                    <div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl hover:-translate-y-2 border-l-8 border-l-transparent hover:border-l-blue-600 shadow-sm'}`}>
                       {editingId === item.id ? (
-                        /* 編輯模式 */
                         <div className="space-y-4">
                           <div className="flex gap-4">
                             <input type="time" value={tempEditData.time} onChange={e => setTempEditData({...tempEditData, time: e.target.value})} className="p-3 bg-slate-50 rounded-xl font-black border border-blue-100 outline-none w-32" />
@@ -433,21 +477,22 @@ const App = () => {
                           </div>
                           <textarea value={tempEditData.note} onChange={e => setTempEditData({...tempEditData, note: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-medium border border-blue-100 outline-none h-24 resize-none" />
                           <div className="flex justify-end gap-3">
-                            <button onClick={() => setEditingId(null)} className="px-6 py-2 rounded-xl font-bold text-slate-400 hover:bg-slate-50">取消</button>
-                            <button onClick={saveEdit} className="px-8 py-2 bg-blue-600 text-white rounded-xl font-black shadow-lg shadow-blue-100 flex items-center gap-2"><Save size={18}/> 儲存更新</button>
+                            <button onClick={() => setEditingId(null)} className="px-6 py-2 rounded-xl font-bold text-slate-400 hover:bg-slate-100">取消</button>
+                            <button onClick={saveEdit} className="px-8 py-2 bg-blue-600 text-white rounded-xl font-black shadow-lg shadow-blue-100 flex items-center gap-2 active:scale-95"><Save size={18}/> 儲存</button>
                           </div>
                         </div>
                       ) : (
-                        /* 顯示模式 */
                         <div className="flex justify-between items-start gap-4">
-                          <div className="space-y-3 flex-1">
-                            <div className="flex items-center gap-3">
+                          <div className="space-y-4 flex-1">
+                            <div className="flex items-center gap-4 flex-wrap">
                                 <h4 className="text-3xl font-black text-slate-800 tracking-tight">{item.spot}</h4>
-                                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-colors inline-flex items-center gap-1 text-xs font-bold">
-                                  <MapPin size={14} /> 地圖
+                                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm">
+                                  <MapPin size={14} /> 查看地圖
                                 </a>
                             </div>
-                            <p className="text-slate-500 font-medium leading-relaxed whitespace-pre-wrap">{item.note || "點擊編輯加入景點說明..."}</p>
+                            <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-50">
+                               <p className="text-slate-500 font-medium leading-relaxed whitespace-pre-wrap text-sm italic">{item.note || "暫無詳細說明，點擊編輯加入景點細節..."}</p>
+                            </div>
                           </div>
                           <div className="flex flex-col gap-2 opacity-0 group-hover/item:opacity-100 transition-all translate-x-4 group-hover/item:translate-x-0">
                             <button onClick={() => startEditing(item)} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all">
@@ -464,9 +509,12 @@ const App = () => {
                 ))}
                 
                 {(!itinerary[activeDay] || itinerary[activeDay]?.spots?.length === 0) && (
-                  <div className="py-28 text-center border-4 border-dashed border-slate-50 rounded-[4rem] bg-slate-50/30">
-                    <Sparkles className="text-slate-100 mx-auto mb-6" size={56} />
-                    <p className="text-slate-300 font-black text-xl italic tracking-tight text-center">空空的行程... 用精彩的景點填滿這一天吧！</p>
+                  <div className="py-32 text-center border-4 border-dashed border-slate-100 rounded-[4rem] bg-slate-50/20">
+                    <Sparkles className="text-slate-100 mx-auto mb-6" size={64} />
+                    <p className="text-slate-300 font-black text-2xl italic tracking-tight text-center px-10">
+                       行程還是空的...<br/>
+                       <span className="text-sm">用精彩的景點填滿這一天吧！</span>
+                    </p>
                   </div>
                 )}
               </div>
