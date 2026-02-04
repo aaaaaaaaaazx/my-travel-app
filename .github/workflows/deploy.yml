@@ -28,6 +28,7 @@ jobs:
           npm run build
         env:
           # 將 GitHub Secrets 中的資料注入到編譯環境變數中
+          # 這裡的名稱必須與您在 GitHub Settings > Secrets 裡設定的名稱完全一致
           VITE_FIREBASE_CONFIG: ${{ secrets.VITE_FIREBASE_CONFIG }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 

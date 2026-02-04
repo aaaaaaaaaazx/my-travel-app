@@ -3,44 +3,54 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
-  signInWithCustomToken, 
   onAuthStateChanged 
 } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
   setDoc, 
-  getDoc, 
   onSnapshot, 
-  collection,
   updateDoc
 } from 'firebase/firestore';
 import { 
-  MapPin, Calendar, Plus, Trash2, Clock, ChevronRight, ChevronLeft,
-  Plane, Save, Map as MapIcon, Navigation, Info, ArrowRight, Wind,
-  Globe, Sparkles, Loader2, X, Share2, Copy, CheckCircle
+  Plane, Calendar, Plus, Trash2, Clock, Share2, 
+  Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon
 } from 'lucide-react';
 
-// --- Firebase 初始化環境變數 ---
-// 使用環境提供的全域變數 __firebase_config 與 __app_id
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : {
-      apiKey: "",
-      authDomain: "",
-      projectId: "",
-      storageBucket: "",
-      messagingSenderId: "",
-      appId: ""
-    };
+// --- Firebase 配置與相容性處理 ---
+let firebaseConfig = {};
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'travel-planner-pro';
+// 安全地獲取環境變數，避免編譯器在不支援 import.meta 的環境報錯
+const getEnv = (key) => {
+  try {
+    // 試圖存取 Vite 環境變數
+    return import.meta.env[key];
+  } catch (e) {
+    return undefined;
+  }
+};
 
-// Gemini API Key 按照規定設為空字串，環境會自動處理
-const geminiApiKey = ""; 
+try {
+  // 1. 優先從 GitHub Actions / Vite 環境變數讀取 (部署環境)
+  const envConfig = getEnv('VITE_FIREBASE_CONFIG');
+  if (envConfig) {
+    firebaseConfig = JSON.parse(envConfig);
+  } else if (typeof __firebase_config !== 'undefined') {
+    // 2. 備選：從預覽環境全域變數讀取
+    firebaseConfig = JSON.parse(__firebase_config);
+  }
+} catch (e) {
+  console.warn("Firebase Config 未能正確加載，請檢查 GitHub Secrets 設定。");
+}
+
+// 初始化 Firebase (加入防錯，避免 Config 為空時崩潰)
+const app = firebaseConfig.apiKey ? initializeApp(firebaseConfig) : null;
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-travel-app';
+
+// Gemini API Key
+const apiKey = getEnv('VITE_GEMINI_API_KEY') || "";
 
 const App = () => {
   const [view, setView] = useState('home');
@@ -50,111 +60,71 @@ const App = () => {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-
   const [activeDay, setActiveDay] = useState(1);
-  const [entryType, setEntryType] = useState('spot');
-  
-  const [tripInfo, setTripInfo] = useState({
-    title: '我的旅遊行程',
-    country: '',
-    city: '',
-    startDate: '',
-    duration: 3
-  });
-  
+  const [tripInfo, setTripInfo] = useState({ title: '我的旅遊', country: '', city: '', startDate: '', duration: 3 });
   const [itinerary, setItinerary] = useState({});
-  const [newEntry, setNewEntry] = useState({ 
-    time: '', spot: '', note: '', flightNo: '', from: '', to: '' 
-  });
+  const [newEntry, setNewEntry] = useState({ time: '09:00', spot: '', note: '' });
 
-  // --- Firebase 驗證邏輯 (遵循規則 3) ---
+  // --- Auth 邏輯 (遵循 RULE 3) ---
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        try { 
+          await signInAnonymously(auth); 
+        } catch (err) { 
+          console.error("登入失敗:", err); 
         }
-      } catch (err) {
-        console.error("Firebase 驗證錯誤:", err);
+      } else { 
+        setUser(u); 
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    });
     return () => unsubscribe();
   }, []);
 
-  // --- 檢查網址參數載入行程 ---
+  // --- 監聽資料 (遵循 RULE 1 & 2) ---
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get('id');
-    if (id) {
-      setTripId(id);
-      loadTrip(id);
-    }
-  }, []);
-
-  // --- Firestore 即時同步監聽 (遵循規則 1 & 2) ---
-  useEffect(() => {
-    if (!user || !tripId) return;
-
-    // 監聽基本資訊
-    const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
-    const unsubTrip = onSnapshot(tripRef, (docSnap) => {
-      if (docSnap.exists()) setTripInfo(docSnap.data());
-    }, (error) => console.error("行程資訊監聽錯誤:", error));
-
-    // 監聽詳細行程
+    if (!user || !tripId || !db) return;
     const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
     const unsubItin = onSnapshot(itinRef, (docSnap) => {
       if (docSnap.exists()) {
         setItinerary(docSnap.data().days || {});
         setView('editor');
       }
-    }, (error) => console.error("行程細節監聽錯誤:", error));
+    }, (err) => console.error("Firestore 讀取失敗:", err));
 
-    return () => { unsubTrip(); unsubItin(); };
+    return () => unsubItin();
   }, [user, tripId]);
 
-  const loadTrip = async (id) => {
-    const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', id);
-    const snap = await getDoc(tripRef);
-    if (snap.exists()) {
-      setTripInfo(snap.data());
-      setView('editor');
-    }
-  };
+  // 初始化網址偵測
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id) setTripId(id);
+  }, []);
 
+  // --- 處理函式 ---
   const handleStartPlanning = async (e) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !db) return;
     setIsLoading(true);
-    
     const newId = crypto.randomUUID();
-    const durationCount = Math.max(1, parseInt(tripInfo.duration) || 1);
     const initialItin = {};
-    for (let i = 1; i <= durationCount; i++) initialItin[i] = [];
+    for (let i = 1; i <= Math.max(1, parseInt(tripInfo.duration) || 1); i++) initialItin[i] = [];
 
     try {
-      // 儲存基本資訊 (規則 1)
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trips', newId), {
-        ...tripInfo,
-        duration: durationCount,
-        creator: user.uid,
-        createdAt: new Date().toISOString()
+        ...tripInfo, creator: user.uid, createdAt: new Date().toISOString()
       });
-      // 儲存詳細行程 (規則 1)
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', newId), {
         days: initialItin
       });
-      
       setTripId(newId);
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.set('id', newId);
-      window.history.pushState({}, '', newUrl);
+      const url = new URL(window.location.href);
+      url.searchParams.set('id', newId);
+      window.history.pushState({}, '', url);
     } catch (err) {
-      console.error("建立行程失敗:", err);
+      console.error("存檔失敗:", err);
     } finally {
       setIsLoading(false);
     }
@@ -162,120 +132,66 @@ const App = () => {
 
   const addEntry = async (e) => {
     e.preventDefault();
-    if (!tripId || !user) return;
-    const entry = { ...newEntry, id: Date.now(), type: entryType };
-    if (entryType === 'spot' && !entry.spot) return;
-    if (entryType === 'flight' && !entry.flightNo) return;
-
-    const updatedDay = [...(itinerary[activeDay] || []), entry].sort((a,b) => a.time.localeCompare(b.time));
-    const newItin = { ...itinerary, [activeDay]: updatedDay };
-    
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
-        days: newItin
-      });
-      setNewEntry({ time: '', spot: '', note: '', flightNo: '', from: '', to: '' });
-    } catch (err) {
-      console.error("新增紀錄失敗:", err);
-    }
+    if (!tripId || !db) return;
+    const updatedDay = [...(itinerary[activeDay] || []), { ...newEntry, id: Date.now() }]
+      .sort((a,b) => a.time.localeCompare(b.time));
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
+      [`days.${activeDay}`]: updatedDay
+    });
+    setNewEntry({ time: '09:00', spot: '', note: '' });
   };
 
-  const deleteEntry = async (id) => {
-    if (!tripId || !user) return;
-    const updatedDay = itinerary[activeDay].filter(item => item.id !== id);
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
-        days: { ...itinerary, [activeDay]: updatedDay }
-      });
-    } catch (err) {
-      console.error("刪除失敗:", err);
-    }
-  };
-
-  const generateAiSuggestions = async () => {
-    // 雖然金鑰由環境填充，但呼叫時仍需確認有存取能力
-    setIsAiLoading(true);
-    const prompt = `請推薦在 ${tripInfo.city}, ${tripInfo.country} 旅遊的 3 個景點。請以繁體中文回答，並嚴格遵循以下 JSON 格式: { "suggestions": [{ "time": "10:00", "spot": "景點名", "note": "景點簡介" }] }`;
-    
-    // 實作指數退避的 API 呼叫
-    const callWithRetry = async (currentAttempt = 0) => {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${geminiApiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        });
-        
-        if (!res.ok) throw new Error(`API 錯誤: ${res.status}`);
-        
-        const result = await res.json();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text.replace(/```json|```/g, '').trim();
-        const data = JSON.parse(text);
-        
-        const newSpots = data.suggestions.map(s => ({ ...s, id: Math.random(), type: 'spot' }));
-        const updatedDay = [...(itinerary[activeDay] || []), ...newSpots].sort((a,b) => a.time.localeCompare(b.time));
-        
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
-          days: { ...itinerary, [activeDay]: updatedDay }
-        });
-      } catch (err) {
-        if (currentAttempt < 5) {
-          const delay = Math.pow(2, currentAttempt) * 1000;
-          await new Promise(r => setTimeout(r, delay));
-          return callWithRetry(currentAttempt + 1);
-        }
-        console.error("AI 推薦失敗:", err);
-      }
-    };
-
-    await callWithRetry();
-    setIsAiLoading(false);
-  };
-
-  const copyUrl = () => {
-    const el = document.createElement('textarea');
-    el.value = window.location.href;
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
-  };
+  // --- 安全檢查畫面 ---
+  if (!firebaseConfig || !firebaseConfig.apiKey) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-8 text-center">
+        <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border max-w-md">
+          <AlertCircle size={48} className="text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-black mb-2 text-slate-900">未偵測到 Firebase 設定</h2>
+          <p className="text-slate-500 text-sm leading-relaxed mb-6">
+            網頁因為抓不到密鑰而空白。請確保您已在 GitHub Repo 的 <b>Settings {' > '} Secrets</b> 中新增了 <b>VITE_FIREBASE_CONFIG</b>。
+          </p>
+          <div className="bg-slate-50 p-4 rounded-2xl text-left text-[10px] font-mono break-all text-slate-600">
+            期望格式: {"{\"apiKey\":\"...\",\"authDomain\":\"...\"}"}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'home') {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-sans">
         <div className="max-w-xl w-full text-center">
-          <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl transform rotate-12">
+          <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl rotate-12 transition-transform hover:rotate-0">
             <Plane size={40} />
           </div>
-          <h1 className="text-4xl font-black text-slate-900 mb-4 tracking-tight">開始規劃您的旅程</h1>
-          <p className="text-slate-500 mb-10 text-lg">透過雲端即時同步，讓您的旅遊行程永不遺失</p>
+          <h1 className="text-4xl font-black mb-4 tracking-tight text-slate-900">開始規劃旅遊</h1>
+          <p className="text-slate-400 font-bold mb-10">輕鬆管理您的行程，與好友同步共享。</p>
           
-          <form onSubmit={handleStartPlanning} className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 space-y-6 text-left">
+          <form onSubmit={handleStartPlanning} className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-slate-100 text-left space-y-6">
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">目的地國家</label>
-                <input required placeholder="例如：日本" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地國家</label>
+                <input required placeholder="例如：日本" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold" />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">城市</label>
-                <input required placeholder="例如：東京" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地城市</label>
+                <input required placeholder="例如：東京" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">預計出發日</label>
-                <input required type="date" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} className="w-full p-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" />
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">出發日期</label>
+                <input required type="date" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">旅遊總天數</label>
-                <input required type="number" min="1" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} className="w-full p-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 focus:ring-blue-500" />
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">旅遊天數</label>
+                <input required type="number" min="1" max="14" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold" />
               </div>
             </div>
-            <button type="submit" disabled={isLoading || !user} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-blue-700 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
-              {isLoading ? <Loader2 className="animate-spin" /> : <>立即建立雲端行程 <ArrowRight /></>}
+            <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 active:scale-95">
+              {isLoading ? <Loader2 className="animate-spin" /> : <>建立行程 <ArrowRight size={20}/></>}
             </button>
           </form>
         </div>
@@ -284,132 +200,98 @@ const App = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <nav className="bg-white/90 backdrop-blur-md border-b sticky top-0 z-50 h-16 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2 font-black text-xl text-blue-600 cursor-pointer" onClick={() => { window.location.search = ''; setView('home'); }}>
-          <Plane className="rotate-45" /> <span>TRAVELER</span>
+    <div className="min-h-screen bg-slate-50 font-sans">
+      <nav className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 flex items-center justify-between px-6 sticky top-0 z-50">
+        <div className="font-black text-blue-600 text-xl flex items-center gap-2 cursor-pointer group" onClick={() => window.location.href = window.location.pathname}>
+          <div className="p-2 bg-blue-50 rounded-xl group-hover:rotate-12 transition-transform">
+            <Plane size={24} className="rotate-45" />
+          </div>
+          <span className="tracking-tighter">TRAVELER</span>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-widest">
-            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div> 同步中
+        <div className="flex items-center gap-3">
+          <div className="hidden md:block text-right">
+            <p className="text-xs font-black text-slate-900 leading-none">{tripInfo.city}</p>
+            <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">{tripInfo.startDate}</p>
           </div>
           <button onClick={() => setShowShareModal(true)} className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors text-slate-600">
-            <Share2 size={20}/>
+            <Share2 size={18} />
           </button>
         </div>
       </nav>
 
-      <main className="max-w-[1400px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* 左側面板：天數與 AI 助手 */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Calendar size={18} className="text-blue-500"/> 行程天數</h3>
-            <div className="grid grid-cols-4 gap-2">
+      <main className="max-w-[1200px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 pb-20">
+        {/* 左側：天數選擇 */}
+        <div className="lg:col-span-3 space-y-4">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+            <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm">
+              <Calendar size={16} className="text-blue-500" /> 行程天數
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
               {Object.keys(itinerary).map(day => (
                 <button 
                   key={day} 
                   onClick={() => setActiveDay(parseInt(day))} 
-                  className={`h-11 rounded-xl font-bold transition-all ${activeDay === parseInt(day) ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
+                  className={`py-3 rounded-2xl font-black text-sm transition-all ${activeDay === parseInt(day) ? 'bg-blue-600 text-white shadow-lg shadow-blue-100 scale-105' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}
                 >
                   D{day}
                 </button>
               ))}
             </div>
           </div>
-          <button 
-            onClick={generateAiSuggestions} 
-            disabled={isAiLoading} 
-            className="w-full py-4 bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-2xl font-black flex items-center justify-center gap-2 shadow-xl shadow-blue-100 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
-          >
-            {isAiLoading ? <Loader2 className="animate-spin" /> : <Sparkles size={20} />} ✨ AI 推薦行程
-          </button>
         </div>
 
-        {/* 中間：行程編輯區 */}
-        <div className="lg:col-span-5 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm min-h-[700px]">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h2 className="text-3xl font-black tracking-tight text-slate-800">DAY {activeDay}</h2>
-              <p className="text-slate-400 font-bold text-xs uppercase mt-1 tracking-widest">{tripInfo.city}, {tripInfo.country}</p>
-            </div>
-            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
-              <button onClick={() => setEntryType('spot')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${entryType === 'spot' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>景點</button>
-              <button onClick={() => setEntryType('flight')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${entryType === 'flight' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>航班</button>
-            </div>
-          </div>
-
-          <form onSubmit={addEntry} className="mb-8 p-5 bg-slate-50 rounded-2xl border border-slate-200 flex flex-wrap gap-3 items-end shadow-inner">
-            <div className="flex-1 min-w-[100px]">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-tighter">抵達時間</label>
-              <input type="time" value={newEntry.time} onChange={e => setNewEntry({...newEntry, time: e.target.value})} className="w-full p-3 rounded-xl border-none shadow-sm outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="flex-[2] min-w-[180px]">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-1 tracking-tighter">{entryType === 'spot' ? '景點名稱' : '航班編號'}</label>
-              <input placeholder={entryType === 'spot' ? "例如：淺草寺" : "例如：BR198"} value={entryType === 'spot' ? newEntry.spot : newEntry.flightNo} onChange={e => setNewEntry({...newEntry, [entryType === 'spot' ? 'spot' : 'flightNo']: e.target.value})} className="w-full p-3 rounded-xl border-none shadow-sm outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <button type="submit" className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-black transition-all shadow-md">加入</button>
-          </form>
-
-          <div className="space-y-4">
-            {itinerary[activeDay]?.map(item => (
-              <div key={item.id} className={`group p-5 rounded-2xl border flex justify-between items-start transition-all hover:shadow-lg ${item.type === 'flight' ? 'bg-blue-50/50 border-blue-100' : 'bg-white border-slate-100'}`}>
-                <div className="flex gap-4">
-                  <span className="text-sm font-black text-slate-300 mt-1">{item.time}</span>
-                  <div>
-                    <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                      {item.type === 'flight' && <Plane size={14} className="text-blue-500"/>}
-                      {item.type === 'flight' ? `航班: ${item.flightNo}` : item.spot}
-                    </h4>
-                    {item.note && <p className="text-xs text-slate-500 mt-2 italic leading-relaxed bg-slate-50 p-2 rounded-lg border border-slate-100">“ {item.note} ”</p>}
-                  </div>
-                </div>
-                <button onClick={() => deleteEntry(item.id)} className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1">
-                  <Trash2 size={18}/>
-                </button>
+        {/* 右側：編輯區域 */}
+        <div className="lg:col-span-9 space-y-6">
+          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <div className="flex justify-between items-end mb-10">
+              <div>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Day {activeDay}</h2>
+                <div className="h-1.5 w-12 bg-blue-600 rounded-full mt-3"></div>
               </div>
-            ))}
-            {(!itinerary[activeDay] || itinerary[activeDay].length === 0) && (
-              <div className="text-center py-24 border-2 border-dashed border-slate-100 rounded-[2rem]">
-                <Wind className="mx-auto mb-3 opacity-10" size={48} />
-                <p className="text-slate-300 font-bold">這天還沒有行程，試試 AI 推薦吧！</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 右側：地圖視覺化 */}
-        <div className="lg:col-span-4">
-          <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden sticky top-24">
-            <div className="p-5 border-b font-bold flex items-center justify-between text-slate-700 bg-slate-50/50">
-              <div className="flex items-center gap-2"><MapIcon size={18}/> 地圖概覽</div>
-              <span className="text-[10px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded uppercase">Live</span>
+              <p className="text-slate-400 font-bold text-sm mb-1">{tripInfo.city}</p>
             </div>
-            <div className="h-[500px] bg-slate-100 relative">
-              <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'radial-gradient(#94a3b8 1px, transparent 1px)', backgroundSize: '24px 24px'}}></div>
-              
-              {itinerary[activeDay]?.filter(i => i.type === 'spot').map((item, idx) => (
-                <div 
-                  key={item.id} 
-                  className="absolute flex flex-col items-center animate-bounce" 
-                  style={{
-                    top: `${20 + (idx * 15) % 60}%`, 
-                    left: `${20 + (idx * 20) % 60}%`,
-                    animationDelay: `${idx * 0.2}s`
-                  }}
-                >
-                  <div className="bg-white px-3 py-1 rounded-full shadow-xl text-[10px] font-bold mb-1 border border-slate-100 whitespace-nowrap">
-                    {item.spot}
-                  </div>
-                  <div className="w-5 h-5 bg-orange-500 rounded-full border-4 border-white shadow-lg"></div>
-                </div>
-              ))}
 
-              {itinerary[activeDay]?.some(i => i.type === 'flight') && (
-                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                   <div className="w-4/5 h-[2px] border-b-2 border-dashed border-blue-400/30 relative">
-                      <Plane size={24} className="text-blue-500 absolute -top-3 left-0 animate-[fly_5s_linear_infinite]" />
-                   </div>
-                 </div>
+            <form onSubmit={addEntry} className="mb-10 flex flex-wrap md:flex-nowrap gap-3 bg-slate-50 p-3 rounded-3xl">
+              <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-100">
+                <Clock size={16} className="text-slate-300" />
+                <input type="time" value={newEntry.time} onChange={e => setNewEntry({...newEntry, time: e.target.value})} className="bg-transparent font-black text-slate-700 outline-none w-20" />
+              </div>
+              <input placeholder="今天要在那裡留下回憶？" required value={newEntry.spot} onChange={e => setNewEntry({...newEntry, spot: e.target.value})} className="flex-1 p-3 bg-white rounded-2xl border border-slate-100 shadow-sm font-bold outline-none focus:ring-2 focus:ring-blue-500" />
+              <button type="submit" className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black hover:bg-black transition-colors shadow-lg shadow-slate-200">加入行程</button>
+            </form>
+
+            <div className="space-y-6 relative before:content-[''] before:absolute before:left-[27px] before:top-4 before:bottom-4 before:w-1 before:bg-slate-50">
+              {(!itinerary[activeDay] || itinerary[activeDay].length === 0) ? (
+                <div className="text-center py-24 bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-100">
+                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                    <MapIcon className="text-slate-200" size={32} />
+                  </div>
+                  <p className="text-slate-400 font-bold">這一天還沒安排行程，<br/>趕快新增一個景點吧！</p>
+                </div>
+              ) : (
+                itinerary[activeDay]?.map((item) => (
+                  <div key={item.id} className="relative pl-14 group">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-14 h-14 bg-white border-4 border-slate-50 rounded-2xl flex items-center justify-center text-[10px] font-black text-blue-600 shadow-sm z-10 group-hover:scale-110 transition-transform">
+                      {item.time}
+                    </div>
+                    <div className="p-6 bg-white border border-slate-100 rounded-3xl flex justify-between items-center group-hover:shadow-xl group-hover:shadow-slate-100 transition-all hover:-translate-y-1">
+                      <div className="space-y-1">
+                        <h4 className="font-black text-slate-800 text-xl tracking-tight">{item.spot}</h4>
+                        {item.note && <p className="text-slate-400 text-sm font-medium">{item.note}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <button onClick={() => {
+                            const updatedDay = itinerary[activeDay].filter(i => i.id !== item.id);
+                            updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
+                              [`days.${activeDay}`]: updatedDay
+                            });
+                         }} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                           <Trash2 size={18} />
+                         </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -418,31 +300,47 @@ const App = () => {
 
       {/* 分享彈窗 */}
       {showShareModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in duration-300">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-black flex items-center gap-2"><Share2 className="text-blue-600" /> 分享行程</h3>
-              <button onClick={() => setShowShareModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X /></button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div className="bg-white p-10 rounded-[3rem] max-w-md w-full shadow-2xl border border-white/20 animate-in fade-in zoom-in duration-300">
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Share2 size={24}/></div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">分享行程</h3>
+              </div>
+              <button onClick={() => setShowShareModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400"><X /></button>
             </div>
-            <p className="text-slate-500 mb-6 font-medium">複製下方專屬連結傳給旅伴，他們就能在線上即時同步查看行程！</p>
-            <div className="flex gap-2">
-              <input readOnly value={window.location.href} className="flex-1 bg-slate-50 p-4 rounded-2xl text-xs font-mono text-slate-400 border border-slate-100 focus:ring-0 outline-none" />
-              <button onClick={copyUrl} className={`px-6 rounded-2xl font-bold transition-all shadow-md ${copySuccess ? 'bg-green-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                {copySuccess ? <CheckCircle size={20}/> : <Copy size={20}/>}
+            
+            <p className="text-slate-500 mb-8 font-medium leading-relaxed">您可以將此連結傳送給旅伴，他們將能即時看到您規劃的最新行程。</p>
+            
+            <div className="flex gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-100 mb-8">
+              <input readOnly value={window.location.href} className="flex-1 bg-transparent px-3 text-[10px] font-mono font-bold text-slate-400 outline-none overflow-hidden text-ellipsis" />
+              <button 
+                onClick={() => { 
+                  try {
+                    navigator.clipboard.writeText(window.location.href); 
+                  } catch (e) {
+                    // 備選方案
+                    const input = document.createElement('input');
+                    input.value = window.location.href;
+                    document.body.appendChild(input);
+                    input.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(input);
+                  }
+                  setCopySuccess(true); 
+                  setTimeout(()=>setCopySuccess(false), 2000); 
+                }} 
+                className={`px-5 py-3 rounded-xl flex items-center gap-2 font-black transition-all ${copySuccess ? 'bg-green-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100'}`}
+              >
+                {copySuccess ? <CheckCircle size={18}/> : <Copy size={18}/>}
+                <span className="text-xs">{copySuccess ? '已複製' : '複製'}</span>
               </button>
             </div>
+            
+            <button onClick={() => setShowShareModal(false)} className="w-full py-4 text-slate-400 font-bold hover:text-slate-600 transition-all text-sm">關閉視窗</button>
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes fly {
-          0% { left: -10%; opacity: 0; transform: rotate(45deg); }
-          10% { opacity: 1; }
-          90% { opacity: 1; }
-          100% { left: 110%; opacity: 0; transform: rotate(45deg); }
-        }
-      `}</style>
     </div>
   );
 };
