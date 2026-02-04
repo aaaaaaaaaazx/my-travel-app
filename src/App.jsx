@@ -17,14 +17,15 @@ import {
 import { 
   Plane, Calendar, Plus, Trash2, Clock, Share2, 
   Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon, ChevronRight,
-  Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown
+  Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown, ExternalLink, Edit3, Save, MapPin
 } from 'lucide-react';
 
 /**
- * 🚀 功能優化版：
- * 1. 航班資訊置頂：優先管理交通細節。
- * 2. 行程卡片移動：新增 Up/Down 按鈕，支援景點重新排序。
- * 3. AI 天氣穩定化：強化 Gemini API 呼叫與 JSON 解析邏輯。
+ * 🚀 功能全面升級版：
+ * 1. 結構化景點：支援「主項目」與「詳細說明」。
+ * 2. 內建編輯：支援卡片點擊即時編輯。
+ * 3. 地圖對接：自動產生 Google Maps 搜尋連結。
+ * 4. 排序與置頂：維持航班置頂與手動排序功能。
  */
 
 const getFirebaseConfig = () => {
@@ -66,8 +67,10 @@ const App = () => {
   const [activeDay, setActiveDay] = useState(1);
   const [tripInfo, setTripInfo] = useState({ country: '', city: '', startDate: '', duration: 3 });
   const [itinerary, setItinerary] = useState({});
-  const [newEntry, setNewEntry] = useState({ time: '09:00', spot: '' });
+  const [newEntry, setNewEntry] = useState({ time: '09:00', spot: '', note: '' });
   const [newFlight, setNewFlight] = useState({ flightNo: '', time: '08:00', type: '起飛' });
+  const [editingId, setEditingId] = useState(null);
+  const [tempEditData, setTempEditData] = useState({});
 
   // 🛠 樣式重設與注入
   useEffect(() => {
@@ -86,7 +89,7 @@ const App = () => {
     document.head.appendChild(style);
   }, []);
 
-  // 1. 身份驗證流程
+  // 1. 身份驗證
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -102,17 +105,17 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. 監聽行程列表
+  // 2. 監聽清單
   useEffect(() => {
     if (!user || !db) return;
     const tripsRef = collection(db, 'artifacts', appId, 'public', 'data', 'trips');
     return onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTrips(tripList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    }, (error) => console.error("List sync error", error));
+    });
   }, [user]);
 
-  // 3. 監聽詳細行程
+  // 3. 監聽行程
   useEffect(() => {
     if (!user || !tripId || !db) return;
     const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
@@ -121,8 +124,7 @@ const App = () => {
         setItinerary(docSnap.data().days || {});
         setView('editor');
       }
-    }, (error) => console.error("Detail sync error", error));
-
+    });
     const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, (docSnap) => {
       if (docSnap.exists()) setTripInfo(docSnap.data());
@@ -152,7 +154,7 @@ const App = () => {
       });
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', newId), { days });
       setTripId(newId);
-    } catch (err) { console.error("Create failed", err); } finally { setIsLoading(false); }
+    } catch (err) { console.error(err); } finally { setIsLoading(false); }
   };
 
   const addEntry = async (e) => {
@@ -161,11 +163,25 @@ const App = () => {
     const entry = { ...newEntry, id: Date.now().toString() };
     const dayData = itinerary[activeDay] || { spots: [], flights: [], weather: null };
     const updatedSpots = [...(dayData.spots || []), entry];
-    
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
       [`days.${activeDay}.spots`]: updatedSpots
     });
-    setNewEntry({ time: '09:00', spot: '' });
+    setNewEntry({ time: '09:00', spot: '', note: '' });
+  };
+
+  const startEditing = (item) => {
+    setEditingId(item.id);
+    setTempEditData({ ...item });
+  };
+
+  const saveEdit = async () => {
+    if (!user || !tripId || !db) return;
+    const dayData = itinerary[activeDay];
+    const updatedSpots = dayData.spots.map(s => s.id === editingId ? tempEditData : s);
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
+      [`days.${activeDay}.spots`]: updatedSpots
+    });
+    setEditingId(null);
   };
 
   const moveEntry = async (index, direction) => {
@@ -174,10 +190,7 @@ const App = () => {
     const spots = [...(dayData.spots || [])];
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= spots.length) return;
-    
-    // 交換順序
     [spots[index], spots[targetIndex]] = [spots[targetIndex], spots[index]];
-    
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
       [`days.${activeDay}.spots`]: spots
     });
@@ -199,34 +212,19 @@ const App = () => {
     if (!user || !apiKey || isAiLoading) return;
     setIsAiLoading(true);
     const dateStr = getFormattedDate(tripInfo.startDate, activeDay);
-    const prompt = `請提供 ${tripInfo.city} 在 ${dateStr} 的天氣預測。必須回答 JSON 格式且僅含以下欄位：{"temp": "氣溫範圍", "condition": "天氣狀態(如: 晴天, 多雲, 短暫陣雨)", "tips": "穿衣與旅遊建議"}。不要包含額外的說明。`;
-
-    const fetchWithRetry = async (retries = 3) => {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
-        });
-        if (!response.ok) throw new Error("API request failed");
-        const result = await response.json();
-        return JSON.parse(result.candidates[0].content.parts[0].text);
-      } catch (err) {
-        if (retries > 0) return await fetchWithRetry(retries - 1);
-        throw err;
-      }
-    };
-
+    const prompt = `提供 ${tripInfo.city} 在 ${dateStr} 的天氣預測 JSON: {"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
     try {
-      const weatherData = await fetchWithRetry();
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
+      });
+      const result = await response.json();
+      const weatherData = JSON.parse(result.candidates[0].content.parts[0].text);
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), {
         [`days.${activeDay}.weather`]: weatherData
       });
-    } catch (err) {
-      console.error("AI 天氣生成最終失敗", err);
-    } finally {
-      setIsAiLoading(false);
-    }
+    } catch (err) { console.error(err); } finally { setIsAiLoading(false); }
   };
 
   const deleteEntry = async (entryId, type = 'spots') => {
@@ -239,7 +237,7 @@ const App = () => {
   };
 
   return (
-    <div className="w-full flex flex-col items-center min-h-screen">
+    <div className="w-full flex flex-col items-center min-h-screen font-sans">
       {!user ? (
         <div className="flex flex-col items-center justify-center h-screen space-y-4">
            <Loader2 className="animate-spin text-blue-600" size={48} />
@@ -251,8 +249,8 @@ const App = () => {
             <div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0">
               <Plane size={48} />
             </div>
-            <h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Traveler Planner</h1>
-            <p className="text-slate-400 font-bold tracking-widest uppercase text-sm">航班行程與 AI 天氣管家</p>
+            <h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1>
+            <p className="text-slate-400 font-bold tracking-widest uppercase text-sm italic">隨心所欲規劃您的完美旅程</p>
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
@@ -274,11 +272,11 @@ const App = () => {
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">出發日期</label>
-                    <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
+                    <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">旅遊天數</label>
-                    <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">天數</label>
+                    <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
                   </div>
                 </div>
                 <button disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl transition-all active:scale-95">
@@ -321,7 +319,7 @@ const App = () => {
             </div>
             <div className="text-right">
               <div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div>
-              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2 inline-block bg-slate-50 px-3 py-1 rounded-full">{tripInfo.startDate} 出發</div>
+              <div className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2 inline-block bg-slate-50 px-3 py-1 rounded-full">{tripInfo.startDate} 出發</div>
             </div>
           </nav>
           
@@ -383,7 +381,7 @@ const App = () => {
               </div>
             </div>
 
-            {/* 行程列表區區 */}
+            {/* 行程列表 */}
             <div className="bg-white p-10 md:p-16 rounded-[4rem] border border-slate-100 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.02)]">
               <div className="flex justify-between items-end mb-14">
                 <div className="space-y-2">
@@ -393,28 +391,74 @@ const App = () => {
                 <div className="w-24 h-2 bg-blue-600 rounded-full shadow-sm mb-2"></div>
               </div>
 
-              <form onSubmit={addEntry} className="mb-14 flex flex-wrap md:flex-nowrap gap-4 bg-slate-50 p-5 rounded-[2.5rem]">
-                <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-2xl shadow-sm border">
-                  <Clock size={20} className="text-blue-500" />
-                  <input type="time" value={newEntry.time} onChange={e => setNewEntry({...newEntry, time: e.target.value})} className="bg-transparent font-black text-slate-700 outline-none w-28 text-lg" />
+              {/* 新增行程表單 */}
+              <form onSubmit={addEntry} className="mb-14 space-y-4 bg-slate-50 p-6 rounded-[2.5rem]">
+                <div className="flex gap-4 flex-wrap md:flex-nowrap">
+                   <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-2xl shadow-sm border w-full md:w-auto">
+                    <Clock size={20} className="text-blue-500" />
+                    <input type="time" value={newEntry.time} onChange={e => setNewEntry({...newEntry, time: e.target.value})} className="bg-transparent font-black text-slate-700 outline-none w-28 text-lg" />
+                  </div>
+                  <input placeholder="今天要在那裡留下回憶？" required value={newEntry.spot} onChange={e => setNewEntry({...newEntry, spot: e.target.value})} className="flex-1 p-4 bg-white border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 text-lg shadow-sm" />
                 </div>
-                <input placeholder="今天想去哪裡留下足跡？" required value={newEntry.spot} onChange={e => setNewEntry({...newEntry, spot: e.target.value})} className="flex-1 p-4 bg-white border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/5 text-lg" />
-                <button type="submit" className="bg-slate-900 hover:bg-black text-white px-12 py-4 rounded-2xl font-black transition-all shadow-xl active:scale-95 shrink-0 text-lg">加入</button>
+                <div className="flex gap-4">
+                  <textarea placeholder="詳細說明或備註 (選填)" value={newEntry.note} onChange={e => setNewEntry({...newEntry, note: e.target.value})} className="flex-1 p-4 bg-white border border-slate-100 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-blue-500/5 text-sm shadow-sm h-24 resize-none" />
+                  <button type="submit" className="bg-slate-900 hover:bg-black text-white px-12 py-4 rounded-2xl font-black transition-all shadow-xl active:scale-95 shrink-0 text-lg flex flex-col items-center justify-center gap-1">
+                    <Plus size={24}/>
+                    <span className="text-xs">加入</span>
+                  </button>
+                </div>
               </form>
 
-              <div className="space-y-8 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full">
+              {/* 行程卡片清單 */}
+              <div className="space-y-10 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full">
                 {itinerary[activeDay]?.spots?.map((item, idx) => (
                   <div key={item.id} className="relative pl-20 group">
-                    {/* 左側排序控制與時間 */}
+                    {/* 左側排序控制 */}
                     <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
                        <button onClick={() => moveEntry(idx, -1)} className="p-1 hover:bg-blue-50 text-slate-200 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"><ArrowUp size={16}/></button>
-                       <div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md z-10 group-hover:scale-110 transition-transform">{item.time}</div>
+                       <div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md z-10 group-hover:scale-110 transition-transform">
+                          {editingId === item.id ? <Edit3 size={16} className="animate-pulse" /> : item.time}
+                       </div>
                        <button onClick={() => moveEntry(idx, 1)} className="p-1 hover:bg-blue-50 text-slate-200 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"><ArrowDown size={16}/></button>
                     </div>
-                    {/* 景點卡片 */}
-                    <div className="p-10 bg-white border border-slate-100 rounded-[3rem] flex justify-between items-center hover:shadow-2xl transition-all hover:-translate-y-2 group/item border-l-8 border-l-transparent hover:border-l-blue-600">
-                      <h4 className="text-2xl font-black text-slate-800 tracking-tight">{item.spot}</h4>
-                      <button onClick={() => deleteEntry(item.id, 'spots')} className="p-4 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all opacity-0 group-hover/item:opacity-100"><Trash2 size={24} /></button>
+
+                    {/* 景點卡片內容 */}
+                    <div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-4 ring-blue-50' : 'border-slate-100 hover:shadow-2xl hover:-translate-y-2 border-l-8 border-l-transparent hover:border-l-blue-600 shadow-sm'}`}>
+                      {editingId === item.id ? (
+                        /* 編輯模式 */
+                        <div className="space-y-4">
+                          <div className="flex gap-4">
+                            <input type="time" value={tempEditData.time} onChange={e => setTempEditData({...tempEditData, time: e.target.value})} className="p-3 bg-slate-50 rounded-xl font-black border border-blue-100 outline-none w-32" />
+                            <input value={tempEditData.spot} onChange={e => setTempEditData({...tempEditData, spot: e.target.value})} className="flex-1 p-3 bg-slate-50 rounded-xl font-black border border-blue-100 outline-none" />
+                          </div>
+                          <textarea value={tempEditData.note} onChange={e => setTempEditData({...tempEditData, note: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-medium border border-blue-100 outline-none h-24 resize-none" />
+                          <div className="flex justify-end gap-3">
+                            <button onClick={() => setEditingId(null)} className="px-6 py-2 rounded-xl font-bold text-slate-400 hover:bg-slate-50">取消</button>
+                            <button onClick={saveEdit} className="px-8 py-2 bg-blue-600 text-white rounded-xl font-black shadow-lg shadow-blue-100 flex items-center gap-2"><Save size={18}/> 儲存更新</button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* 顯示模式 */
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="space-y-3 flex-1">
+                            <div className="flex items-center gap-3">
+                                <h4 className="text-3xl font-black text-slate-800 tracking-tight">{item.spot}</h4>
+                                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-colors inline-flex items-center gap-1 text-xs font-bold">
+                                  <MapPin size={14} /> 地圖
+                                </a>
+                            </div>
+                            <p className="text-slate-500 font-medium leading-relaxed whitespace-pre-wrap">{item.note || "點擊編輯加入景點說明..."}</p>
+                          </div>
+                          <div className="flex flex-col gap-2 opacity-0 group-hover/item:opacity-100 transition-all translate-x-4 group-hover/item:translate-x-0">
+                            <button onClick={() => startEditing(item)} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all">
+                              <Edit3 size={20} />
+                            </button>
+                            <button onClick={() => deleteEntry(item.id, 'spots')} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all">
+                              <Trash2 size={20} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -422,7 +466,7 @@ const App = () => {
                 {(!itinerary[activeDay] || itinerary[activeDay]?.spots?.length === 0) && (
                   <div className="py-28 text-center border-4 border-dashed border-slate-50 rounded-[4rem] bg-slate-50/30">
                     <Sparkles className="text-slate-100 mx-auto mb-6" size={56} />
-                    <p className="text-slate-300 font-black text-xl italic tracking-tight text-center">行程是空的... 用精彩的項目填滿它吧！</p>
+                    <p className="text-slate-300 font-black text-xl italic tracking-tight text-center">空空的行程... 用精彩的景點填滿這一天吧！</p>
                   </div>
                 )}
               </div>
