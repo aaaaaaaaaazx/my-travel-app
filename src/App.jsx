@@ -17,17 +17,20 @@ import {
 import { 
   Plane, Calendar, Plus, Trash2, Clock, Share2, 
   Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon, ChevronRight,
-  Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown, Edit3, Save, MapPin, CheckSquare, Coins, ListChecks, Search, ExternalLink
+  Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown, Edit3, Save, MapPin, CheckSquare, Coins, ListChecks, Search, ExternalLink, Circle
 } from 'lucide-react';
 
 /**
- * 🚀 全功能整合版：
+ * 🚀 全功能整合版 (2026.02.05 更新)：
  * 1. 航班管理：含去回程日期、Google Flights 連結。
- * 2. 旅行行程：支援上下調整排序。
- * 3. 天氣頁面：整合 Google 搜尋查詢。
+ * 2. 旅行行程：支援即時上下調整排序。
+ * 3. 天氣頁面：整合 Google 搜尋查詢 (修復提示詞解析)。
  * 4. 準備清單：內建完整基本選項。
  * 5. 匯率頁面：修復查詢與計算邏輯。
  */
+
+// 版本資訊
+const VERSION_INFO = "最後更新：2026/02/05 07:16";
 
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -100,6 +103,12 @@ const App = () => {
       }
       throw err;
     }
+  };
+
+  // JSON 清洗助手：防止 AI 回傳 ```json ... ``` 標籤
+  const cleanJsonResponse = (text) => {
+    if (!text) return null;
+    return text.replace(/```json/g, '').replace(/```/g, '').trim();
   };
 
   useEffect(() => {
@@ -200,6 +209,7 @@ const App = () => {
     } finally { setIsLoading(false); }
   };
 
+  // --- AI 處理邏輯 (強化版) ---
   const callGemini = async (prompt, isJson = false) => {
     setAiLoading(true);
     try {
@@ -208,14 +218,17 @@ const App = () => {
         tools: [{ "google_search": {} }]
       };
       if (isJson) body.generationConfig = { responseMimeType: "application/json" };
+      
       const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-      return result.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      return isJson ? cleanJsonResponse(text) : text;
     } catch (e) {
-      console.error(e);
+      console.error("AI 呼叫失敗:", e);
       return null;
     } finally {
       setAiLoading(false);
@@ -239,12 +252,17 @@ const App = () => {
       const spots = [...(currentDay.spots || [])];
       const target = idx + dir;
       if (target < 0 || target >= spots.length) return;
-      [spots[idx], spots[target]] = [spots[target], spots[idx]];
+      
+      // 靈敏排序：交換陣列位置
+      const temp = spots[idx];
+      spots[idx] = spots[target];
+      spots[target] = temp;
+      
       await updateItinField(`days.${activeDay}.spots`, spots);
     };
 
     return (
-      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto">
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto w-full">
         <div className="flex gap-3 overflow-x-auto pb-6 mb-8 scrollbar-hide">
           {Object.keys(itineraryData.days).map(day => (
             <button key={day} onClick={() => setActiveDay(parseInt(day))} className={`shrink-0 px-8 py-4 rounded-2xl font-black transition-all border ${activeDay === parseInt(day) ? 'bg-blue-600 text-white shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
@@ -282,9 +300,13 @@ const App = () => {
             {currentDay.spots?.map((item, idx) => (
               <div key={item.id} className="relative pl-16 group">
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1">
-                  <button onClick={() => moveSpot(idx, -1)} className="text-slate-200 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-all"><ArrowUp size={16}/></button>
+                  <button onClick={() => moveSpot(idx, -1)} className="text-slate-200 hover:text-blue-600 transition-all hover:scale-125 disabled:opacity-0" disabled={idx === 0}>
+                    <ArrowUp size={20}/>
+                  </button>
                   <div className="w-14 h-14 bg-white border-4 border-slate-50 rounded-2xl flex items-center justify-center text-[10px] font-black text-blue-600 shadow-md">{item.time}</div>
-                  <button onClick={() => moveSpot(idx, 1)} className="text-slate-200 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-all"><ArrowDown size={16}/></button>
+                  <button onClick={() => moveSpot(idx, 1)} className="text-slate-200 hover:text-blue-600 transition-all hover:scale-125 disabled:opacity-0" disabled={idx === currentDay.spots.length - 1}>
+                    <ArrowDown size={20}/>
+                  </button>
                 </div>
                 <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] flex justify-between items-start hover:shadow-xl transition-all border-l-8 hover:border-l-blue-600 shadow-sm">
                   <div className="space-y-2">
@@ -324,12 +346,12 @@ const App = () => {
     };
 
     return (
-      <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
+      <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 w-full">
         <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border">
           <div className="flex justify-between items-center mb-8">
             <h3 className="text-2xl font-black flex items-center gap-2"><Plane className="text-blue-600"/> 航班管理</h3>
             <a href="https://www.google.com/travel/flights?hl=zh-TW" target="_blank" rel="noreferrer" className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-all">
-              <Globe size={14}/> 前往 Google Flights
+              <Globe size={14}/> Google Flights
             </a>
           </div>
 
@@ -370,7 +392,7 @@ const App = () => {
           <form onSubmit={addFlight} className="flex gap-3 bg-slate-900 p-5 rounded-[2.5rem] shadow-xl">
              <input required placeholder="航班編號 (如: BR198)" value={newF.flightNo} onChange={e => setNewF({...newF, flightNo: e.target.value.toUpperCase()})} className="flex-1 p-3 rounded-2xl bg-white/10 text-white placeholder-white/30 border-none outline-none font-black text-sm focus:bg-white/20" />
              <input type="time" value={newF.time} onChange={e => setNewF({...newF, time: e.target.value})} className="p-3 rounded-2xl bg-white/10 text-white border-none outline-none font-black text-sm w-32 focus:bg-white/20" />
-             <button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all shadow-lg">新增航班</button>
+             <button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all shadow-lg shrink-0">新增</button>
           </form>
         </div>
       </div>
@@ -381,18 +403,21 @@ const App = () => {
     const currentWeather = itineraryData.days[activeDay]?.weather;
 
     const fetchWeather = async () => {
-      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣預報資訊。輸出 JSON: {"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
+      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣預報資訊。
+      必須輸出純 JSON 格式且僅含以下欄位：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}。請不要包含任何解釋文字。`;
       const res = await callGemini(prompt, true);
       if (res) {
         try {
           const data = JSON.parse(res);
           await updateItinField(`days.${activeDay}.weather`, data);
-        } catch (e) {}
+        } catch (e) {
+          console.error("JSON 解析失敗，原始內容：", res);
+        }
       }
     };
 
     return (
-      <div className="bg-white p-12 rounded-[4rem] shadow-sm border text-center animate-in fade-in duration-500 relative overflow-hidden max-w-4xl mx-auto">
+      <div className="bg-white p-12 rounded-[4rem] shadow-sm border text-center animate-in fade-in duration-500 relative overflow-hidden max-w-4xl mx-auto w-full">
         <div className="absolute top-0 right-0 p-10 text-blue-50/50 -z-10"><Cloud size={180}/></div>
         <h3 className="text-2xl font-black mb-10 flex items-center justify-center gap-2"><Sun className="text-yellow-500"/> 當日即時天氣</h3>
         
@@ -436,7 +461,7 @@ const App = () => {
     };
 
     return (
-      <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border animate-in fade-in duration-500 max-w-4xl mx-auto">
+      <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
         <h3 className="text-2xl font-black mb-8 flex items-center gap-2"><ListChecks className="text-green-500"/> 行前準備清單</h3>
         <form onSubmit={addItem} className="flex gap-3 mb-10 bg-slate-50 p-4 rounded-3xl border">
            <input placeholder="手動新增清單項目..." value={newItem} onChange={e => setNewItem(e.target.value)} className="flex-1 p-3 bg-white border rounded-2xl outline-none font-bold" />
@@ -446,7 +471,7 @@ const App = () => {
            {list.map(item => (
              <div key={item.id} onClick={() => toggle(item.id)} className={`flex items-center justify-between p-5 rounded-2xl border cursor-pointer transition-all ${item.done ? 'bg-slate-50 opacity-50' : 'bg-white hover:border-green-500 hover:shadow-md'}`}>
                 <div className="flex items-center gap-4">
-                  {item.done ? <CheckCircle className="text-green-500" /> : <Circle className="text-slate-200" />}
+                  {item.done ? <CheckCircle className="text-green-500" /> : <div className="w-6 h-6 border-2 border-slate-200 rounded-lg" />}
                   <span className={`font-bold ${item.done ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.text}</span>
                 </div>
                 <button onClick={(e) => {
@@ -466,20 +491,22 @@ const App = () => {
 
     const fetchRate = async () => {
       const prompt = `利用 Google 搜尋查出目前「台幣 TWD」兌換「${tripInfo.country} 當地主要貨幣」的匯率。
-      必須輸出 JSON 格式且僅含以下欄位：{"rate": 數值, "currencyName": "貨幣名稱", "tips": "換匯建議"}。`;
+      必須輸出純 JSON 格式且僅含以下欄位：{"rate": 匯率數值, "currencyName": "貨幣名稱", "tips": "換匯建議"}。`;
       const res = await callGemini(prompt, true);
       if (res) {
         try {
           const data = JSON.parse(res);
           await updateItinField('currencyInfo', data);
-        } catch (e) { console.error("JSON parse error", e); }
+        } catch (e) {
+          console.error("匯率 JSON 解析失敗：", res);
+        }
       }
     };
 
     const calculatedValue = info ? (parseFloat(amount) * parseFloat(info.rate)).toFixed(2) : 0;
 
     return (
-      <div className="bg-white p-12 rounded-[4rem] shadow-sm border text-center animate-in fade-in duration-500 max-w-4xl mx-auto">
+      <div className="bg-white p-12 rounded-[4rem] shadow-sm border text-center animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
         <h3 className="text-2xl font-black mb-10 flex items-center justify-center gap-2"><Coins className="text-yellow-600"/> 匯率即時查詢</h3>
         
         {info ? (
@@ -586,6 +613,11 @@ const App = () => {
             </div>
           </div>
         </div>
+        
+        {/* 版本標記 */}
+        <div className="mt-12 text-slate-300 text-[10px] font-bold uppercase tracking-widest">
+           {VERSION_INFO}
+        </div>
       </div>
     );
   }
@@ -644,9 +676,5 @@ const App = () => {
     </div>
   );
 };
-
-const Circle = ({ className }) => (
-  <div className={`w-6 h-6 border-2 rounded-lg ${className}`}></div>
-);
 
 export default App;
