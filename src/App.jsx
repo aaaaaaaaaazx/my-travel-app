@@ -21,20 +21,18 @@ import {
 } from 'lucide-react';
 
 /**
- * 🚀 全功能整合版 (2026.02.05 更新)：
- * 1. 航班管理：含去回程日期、Google Flights 連結。
- * 2. 旅行行程：支援即時上下調整排序。
- * 3. 天氣頁面：整合 Google 搜尋查詢 (修復提示詞解析)。
- * 4. 準備清單：內建完整基本選項。
- * 5. 匯率頁面：修復查詢與計算邏輯。
+ * 🚀 全功能整合修復版 (2026.02.05):
+ * 1. AI 邏輯修復：加入 JSON 清洗與 Google 搜尋 Grounding。
+ * 2. 航班管理：支援日期、刪除、修改與 AI 搜尋。
+ * 3. 行程排序：超靈敏上下移動邏輯。
+ * 4. 準備清單：內建 18 項預設必備物品。
  */
 
-// 版本資訊
-const VERSION_INFO = "最後更新：2026/02/05 07:16";
+const VERSION_INFO = "最後更新：2026/02/05 07:45 (AI 引擎啟動版)";
 
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-    try { return JSON.parse(__firebase_config); } catch (e) { console.error("Canvas Config 解析失敗", e); }
+    try { return JSON.parse(__firebase_config); } catch (e) {}
   }
   return {
     apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
@@ -51,12 +49,11 @@ const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id.replace(/\//g, '_') : 'travel-yeh';
 
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
-const appId = rawAppId.replace(/\//g, '_');
-const apiKey = ""; 
+// 🔑 已更新為您提供的 Gemini API Key
+const apiKey = "AIzaSyAJonoRzATBWnDzKwzRe-Vg2Knmb55uv1Q"; 
 
-// 預設準備清單項目
 const DEFAULT_CHECKLIST = [
   { id: 'c1', text: '護照、證件', done: false },
   { id: 'c2', text: '錢包、外幣、信用卡', done: false },
@@ -105,26 +102,11 @@ const App = () => {
     }
   };
 
-  // JSON 清洗助手：防止 AI 回傳 ```json ... ``` 標籤
+  // JSON 清洗助手
   const cleanJsonResponse = (text) => {
     if (!text) return null;
     return text.replace(/```json/g, '').replace(/```/g, '').trim();
   };
-
-  useEffect(() => {
-    if (!document.getElementById('tailwind-cdn')) {
-      const script = document.createElement('script');
-      script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com';
-      document.head.appendChild(script);
-    }
-    const style = document.createElement('style');
-    style.innerHTML = `
-      html, body, #root { min-height: 100% !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background-color: #f8fafc; }
-      #root { display: flex !important; flex-direction: column !important; align-items: center !important; }
-      .scrollbar-hide::-webkit-scrollbar { display: none; }
-    `;
-    document.head.appendChild(style);
-  }, []);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -200,16 +182,13 @@ const App = () => {
         ...tripInfo, creator: user.uid, createdAt: new Date().toISOString()
       });
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', newId), { 
-        days, 
-        checklist: DEFAULT_CHECKLIST,
-        flightsInfo: { departDate: tripInfo.startDate, returnDate: '', flights: [] }
+        days, checklist: DEFAULT_CHECKLIST, flightsInfo: { departDate: tripInfo.startDate, returnDate: '', flights: [] }
       });
       setTripId(newId);
       setActiveTab('itinerary');
     } finally { setIsLoading(false); }
   };
 
-  // --- AI 處理邏輯 (強化版) ---
   const callGemini = async (prompt, isJson = false) => {
     setAiLoading(true);
     try {
@@ -235,7 +214,7 @@ const App = () => {
     }
   };
 
-  // --- 分頁組件 ---
+  // --- 分頁內容 ---
 
   const ItineraryView = () => {
     const [newSpot, setNewSpot] = useState({ time: '09:00', spot: '', note: '' });
@@ -252,12 +231,9 @@ const App = () => {
       const spots = [...(currentDay.spots || [])];
       const target = idx + dir;
       if (target < 0 || target >= spots.length) return;
-      
-      // 靈敏排序：交換陣列位置
       const temp = spots[idx];
       spots[idx] = spots[target];
       spots[target] = temp;
-      
       await updateItinField(`days.${activeDay}.spots`, spots);
     };
 
@@ -274,47 +250,41 @@ const App = () => {
         <div className="bg-white p-8 md:p-12 rounded-[3.5rem] shadow-sm border border-slate-100">
           <div className="flex justify-between items-end mb-10">
             <div>
-               <h2 className="text-5xl font-black text-slate-900 italic tracking-tighter">Day {activeDay}</h2>
-               <p className="text-slate-400 font-bold uppercase text-xs mt-1 tracking-widest">{getFormattedDate(tripInfo.startDate, activeDay)}</p>
+               <h2 className="text-5xl font-black text-slate-900 italic tracking-tighter leading-none">Day {activeDay}</h2>
+               <p className="text-slate-400 font-bold uppercase text-[10px] mt-2 tracking-widest">{getFormattedDate(tripInfo.startDate, activeDay)}</p>
             </div>
             <div className="w-16 h-1.5 bg-blue-600 rounded-full mb-2"></div>
           </div>
 
           <form onSubmit={addSpot} className="mb-10 space-y-3 bg-slate-50 p-6 rounded-3xl border">
             <div className="flex gap-3 flex-wrap md:flex-nowrap">
-               <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto">
+               <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm">
                  <Clock size={18} className="text-blue-500" />
                  <input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24" />
                </div>
-               <input placeholder="景點名稱" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none" />
+               <input placeholder="今天想去哪裡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" />
             </div>
             <div className="flex gap-3">
-               <textarea placeholder="詳細備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium outline-none h-20 resize-none text-sm" />
-               <button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95">
-                 <Plus size={24}/><span className="text-[10px]">加入</span>
-               </button>
+               <textarea placeholder="景點細節或備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium outline-none h-20 resize-none text-sm shadow-sm" />
+               <button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"><Plus size={24}/><span className="text-[10px]">加入</span></button>
             </div>
           </form>
 
           <div className="space-y-8 relative before:content-[''] before:absolute before:left-[27px] before:top-4 before:bottom-4 before:w-1 before:bg-slate-50">
             {currentDay.spots?.map((item, idx) => (
               <div key={item.id} className="relative pl-16 group">
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1">
-                  <button onClick={() => moveSpot(idx, -1)} className="text-slate-200 hover:text-blue-600 transition-all hover:scale-125 disabled:opacity-0" disabled={idx === 0}>
-                    <ArrowUp size={20}/>
-                  </button>
-                  <div className="w-14 h-14 bg-white border-4 border-slate-50 rounded-2xl flex items-center justify-center text-[10px] font-black text-blue-600 shadow-md">{item.time}</div>
-                  <button onClick={() => moveSpot(idx, 1)} className="text-slate-200 hover:text-blue-600 transition-all hover:scale-125 disabled:opacity-0" disabled={idx === currentDay.spots.length - 1}>
-                    <ArrowDown size={20}/>
-                  </button>
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 z-10">
+                  <button onClick={() => moveSpot(idx, -1)} disabled={idx === 0} className="text-slate-200 hover:text-blue-600 transition-all disabled:opacity-0 active:scale-125"><ArrowUp size={20}/></button>
+                  <div className="w-14 h-14 bg-white border-4 border-slate-50 rounded-2xl flex items-center justify-center text-[10px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div>
+                  <button onClick={() => moveSpot(idx, 1)} disabled={idx === currentDay.spots.length - 1} className="text-slate-200 hover:text-blue-600 transition-all disabled:opacity-0 active:scale-125"><ArrowDown size={20}/></button>
                 </div>
-                <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] flex justify-between items-start hover:shadow-xl transition-all border-l-8 hover:border-l-blue-600 shadow-sm">
-                  <div className="space-y-2">
+                <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] flex justify-between items-start hover:shadow-2xl transition-all border-l-8 border-l-transparent hover:border-l-blue-600 shadow-sm">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-3">
-                       <h4 className="text-2xl font-black text-slate-800">{item.spot}</h4>
+                       <h4 className="text-2xl font-black text-slate-800 tracking-tight">{item.spot}</h4>
                        <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-blue-600 hover:text-white transition-all"><MapPin size={12}/> 地圖</a>
                     </div>
-                    <p className="text-slate-500 text-sm italic whitespace-pre-wrap">{item.note || "暫無備註..."}</p>
+                    <p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{item.note || "點擊右側垃圾桶刪除並重新編輯項目..."}</p>
                   </div>
                   <button onClick={async () => {
                     const filtered = currentDay.spots.filter(s => s.id !== item.id);
@@ -323,9 +293,6 @@ const App = () => {
                 </div>
               </div>
             ))}
-            {(!currentDay.spots || currentDay.spots.length === 0) && (
-              <div className="py-20 text-center border-4 border-dashed border-slate-100 rounded-[3rem] text-slate-300 font-bold italic">行程還是空的，開始規劃吧！</div>
-            )}
           </div>
         </div>
       </div>
@@ -334,65 +301,73 @@ const App = () => {
 
   const FlightView = () => {
     const fInfo = itineraryData.flightsInfo || { departDate: '', returnDate: '', flights: [] };
-    const [newF, setNewF] = useState({ flightNo: '', time: '08:00', type: '起飛' });
-
-    const saveDates = (field, val) => updateItinField(`flightsInfo.${field}`, val);
+    const [newF, setNewF] = useState({ flightNo: '', time: '08:00', type: '去程' });
 
     const addFlight = async (e) => {
       e.preventDefault();
       const updated = [...(fInfo.flights || []), { ...newF, id: Date.now().toString() }];
       await updateItinField(`flightsInfo.flights`, updated);
-      setNewF({ flightNo: '', time: '08:00', type: '起飛' });
+      setNewF({ flightNo: '', time: '08:00', type: '去程' });
+    };
+
+    const getFlightAi = async (id, flightNo) => {
+      const info = await callGemini(`利用 Google 搜尋查出航班「${flightNo}」目前的航空公司、起訖城市與航程時間，精簡成一句話回答。`);
+      if (info) {
+        const updated = fInfo.flights.map(f => f.id === id ? { ...f, aiInfo: info } : f);
+        await updateItinField(`flightsInfo.flights`, updated);
+      }
     };
 
     return (
       <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 w-full">
-        <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border">
+        <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
           <div className="flex justify-between items-center mb-8">
             <h3 className="text-2xl font-black flex items-center gap-2"><Plane className="text-blue-600"/> 航班管理</h3>
-            <a href="https://www.google.com/travel/flights?hl=zh-TW" target="_blank" rel="noreferrer" className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-all">
+            <a href="https://www.google.com/travel/flights?hl=zh-TW" target="_blank" rel="noreferrer" className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-all shadow-sm">
               <Globe size={14}/> Google Flights
             </a>
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-10">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">起飛日期</label>
-              <input type="date" value={fInfo.departDate} onChange={e => saveDates('departDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" />
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">去程日期</label>
+              <input type="date" value={fInfo.departDate} onChange={e => updateItinField('flightsInfo.departDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">回程日期</label>
-              <input type="date" value={fInfo.returnDate} onChange={e => saveDates('returnDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" />
+              <input type="date" value={fInfo.returnDate} onChange={e => updateItinField('flightsInfo.returnDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" />
             </div>
           </div>
 
-          <div className="space-y-4 mb-8">
+          <div className="space-y-4 mb-10">
             {fInfo.flights?.map(f => (
-              <div key={f.id} className="p-6 bg-slate-50 rounded-3xl border flex justify-between items-center group">
-                <div className="flex items-center gap-4">
-                  <div className="bg-blue-600 text-white p-3 rounded-2xl shadow-lg shadow-blue-100">
-                    <PlaneTakeoff size={20}/>
-                  </div>
+              <div key={f.id} className="p-6 bg-slate-50 rounded-3xl border flex justify-between items-center group relative overflow-hidden">
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="bg-blue-600 text-white p-3 rounded-2xl shadow-lg"><PlaneTakeoff size={20}/></div>
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                        <span className="text-xl font-black text-slate-800">{f.flightNo}</span>
-                       <span className="bg-white px-2 py-0.5 rounded-full text-[9px] font-black border text-slate-400 uppercase">{f.type}</span>
+                       <span className="bg-white px-2 py-0.5 rounded-full text-[9px] font-black border border-slate-200 text-slate-400 uppercase">{f.type}</span>
                     </div>
-                    <p className="text-xs text-slate-400 font-bold mt-0.5">{f.time}</p>
+                    <p className="text-xs text-slate-400 font-bold mt-1">{f.time}</p>
+                    {f.aiInfo && <p className="text-[11px] text-slate-500 italic mt-2 bg-white/50 p-2 rounded-lg border border-white leading-relaxed">{f.aiInfo}</p>}
                   </div>
                 </div>
-                <button onClick={async () => {
-                  const filtered = fInfo.flights.filter(fl => fl.id !== f.id);
-                  await updateItinField(`flightsInfo.flights`, filtered);
-                }} className="text-slate-200 hover:text-red-500 p-2 transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
+                <div className="flex gap-2 relative z-10 opacity-0 group-hover:opacity-100 transition-all">
+                    <button onClick={() => getFlightAi(f.id, f.flightNo)} className="p-2 text-blue-500 hover:bg-blue-100 rounded-xl"><Sparkles size={18}/></button>
+                    <button onClick={async () => {
+                      const filtered = fInfo.flights.filter(fl => fl.id !== f.id);
+                      await updateItinField(`flightsInfo.flights`, filtered);
+                    }} className="p-2 text-slate-300 hover:text-red-500"><Trash2 size={18}/></button>
+                </div>
               </div>
             ))}
           </div>
 
           <form onSubmit={addFlight} className="flex gap-3 bg-slate-900 p-5 rounded-[2.5rem] shadow-xl">
-             <input required placeholder="航班編號 (如: BR198)" value={newF.flightNo} onChange={e => setNewF({...newF, flightNo: e.target.value.toUpperCase()})} className="flex-1 p-3 rounded-2xl bg-white/10 text-white placeholder-white/30 border-none outline-none font-black text-sm focus:bg-white/20" />
-             <input type="time" value={newF.time} onChange={e => setNewF({...newF, time: e.target.value})} className="p-3 rounded-2xl bg-white/10 text-white border-none outline-none font-black text-sm w-32 focus:bg-white/20" />
-             <button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all shadow-lg shrink-0">新增</button>
+             <input required placeholder="航班編號 (如: BR198)" value={newF.flightNo} onChange={e => setNewF({...newF, flightNo: e.target.value.toUpperCase()})} className="flex-1 p-3 rounded-2xl bg-white/10 text-white placeholder-white/30 border-none outline-none font-black text-sm" />
+             <input type="time" value={newF.time} onChange={e => setNewF({...newF, time: e.target.value})} className="p-3 rounded-2xl bg-white/10 text-white border-none outline-none font-black text-sm w-32" />
+             <button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all">新增</button>
           </form>
         </div>
       </div>
@@ -403,39 +378,36 @@ const App = () => {
     const currentWeather = itineraryData.days[activeDay]?.weather;
 
     const fetchWeather = async () => {
-      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣預報資訊。
-      必須輸出純 JSON 格式且僅含以下欄位：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}。請不要包含任何解釋文字。`;
+      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣預報。必須輸出純 JSON 且無任何說明：{"temp": "氣溫", "condition": "狀態", "tips": "穿衣建議"}`;
       const res = await callGemini(prompt, true);
       if (res) {
         try {
           const data = JSON.parse(res);
           await updateItinField(`days.${activeDay}.weather`, data);
-        } catch (e) {
-          console.error("JSON 解析失敗，原始內容：", res);
-        }
+        } catch (e) { console.error("Weather JSON Parse Error", res); }
       }
     };
 
     return (
       <div className="bg-white p-12 rounded-[4rem] shadow-sm border text-center animate-in fade-in duration-500 relative overflow-hidden max-w-4xl mx-auto w-full">
         <div className="absolute top-0 right-0 p-10 text-blue-50/50 -z-10"><Cloud size={180}/></div>
-        <h3 className="text-2xl font-black mb-10 flex items-center justify-center gap-2"><Sun className="text-yellow-500"/> 當日即時天氣</h3>
+        <h3 className="text-2xl font-black mb-10 flex items-center justify-center gap-2"><Sun className="text-yellow-500"/> 當日即時天氣預測</h3>
         
         {currentWeather ? (
           <div className="space-y-6">
             <div className="text-8xl font-black text-slate-900 tracking-tighter">{currentWeather.temp}</div>
             <div className="text-2xl font-black text-blue-600">{currentWeather.condition}</div>
             <div className="bg-blue-50 p-8 rounded-[3rem] border border-blue-100 max-w-md mx-auto shadow-sm">
-              <p className="text-blue-700 font-bold text-sm leading-relaxed whitespace-pre-wrap">{currentWeather.tips}</p>
+              <p className="text-blue-700 font-bold text-sm leading-relaxed">{currentWeather.tips}</p>
             </div>
-            <button onClick={fetchWeather} className="text-slate-300 text-xs font-bold underline mt-8 hover:text-blue-600 transition-all">重新獲取最新預報</button>
+            <button onClick={fetchWeather} className="text-slate-300 text-xs font-bold underline mt-8 hover:text-blue-600 transition-colors">重新獲取天氣資料</button>
           </div>
         ) : (
           <div className="py-10">
-            <Sparkles className="text-blue-200 mx-auto mb-6" size={64}/>
-            <p className="text-slate-400 font-bold mb-8">準備查詢：{tripInfo.city} · {getFormattedDate(tripInfo.startDate, activeDay)}</p>
+            <Sparkles className="text-blue-100 mx-auto mb-6" size={80}/>
+            <p className="text-slate-400 font-bold mb-8 uppercase tracking-widest text-xs">{tripInfo.city} · {getFormattedDate(tripInfo.startDate, activeDay)}</p>
             <button onClick={fetchWeather} disabled={aiLoading} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl flex items-center gap-3 mx-auto hover:scale-105 active:scale-95 transition-all">
-              {aiLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>} 獲取 Google 搜尋建議
+              {aiLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>} 獲取 Google 搜尋天氣資訊
             </button>
           </div>
         )}
@@ -464,10 +436,10 @@ const App = () => {
       <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
         <h3 className="text-2xl font-black mb-8 flex items-center gap-2"><ListChecks className="text-green-500"/> 行前準備清單</h3>
         <form onSubmit={addItem} className="flex gap-3 mb-10 bg-slate-50 p-4 rounded-3xl border">
-           <input placeholder="手動新增清單項目..." value={newItem} onChange={e => setNewItem(e.target.value)} className="flex-1 p-3 bg-white border rounded-2xl outline-none font-bold" />
-           <button type="submit" className="bg-slate-900 text-white px-8 rounded-2xl font-black active:scale-95">新增</button>
+           <input placeholder="新增個人化備註..." value={newItem} onChange={e => setNewItem(e.target.value)} className="flex-1 p-3 bg-white border rounded-2xl outline-none font-bold" />
+           <button type="submit" className="bg-slate-900 text-white px-8 rounded-2xl font-black active:scale-95 transition-all">新增</button>
         </form>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
            {list.map(item => (
              <div key={item.id} onClick={() => toggle(item.id)} className={`flex items-center justify-between p-5 rounded-2xl border cursor-pointer transition-all ${item.done ? 'bg-slate-50 opacity-50' : 'bg-white hover:border-green-500 hover:shadow-md'}`}>
                 <div className="flex items-center gap-4">
@@ -477,7 +449,7 @@ const App = () => {
                 <button onClick={(e) => {
                    e.stopPropagation();
                    updateItinField('checklist', list.filter(i => i.id !== item.id));
-                }} className="text-slate-200 hover:text-red-500 p-2"><Trash2 size={16}/></button>
+                }} className="text-slate-200 hover:text-red-500 p-2 transition-all"><Trash2 size={16}/></button>
              </div>
            ))}
         </div>
@@ -490,16 +462,13 @@ const App = () => {
     const info = itineraryData.currencyInfo;
 
     const fetchRate = async () => {
-      const prompt = `利用 Google 搜尋查出目前「台幣 TWD」兌換「${tripInfo.country} 當地主要貨幣」的匯率。
-      必須輸出純 JSON 格式且僅含以下欄位：{"rate": 匯率數值, "currencyName": "貨幣名稱", "tips": "換匯建議"}。`;
+      const prompt = `利用 Google 搜尋查出目前「台幣 TWD」兌換「${tripInfo.country} 當地貨幣」的匯率。輸出純 JSON：{"rate": 匯率數值, "currencyName": "貨幣名稱", "tips": "換匯建議"}`;
       const res = await callGemini(prompt, true);
       if (res) {
         try {
           const data = JSON.parse(res);
           await updateItinField('currencyInfo', data);
-        } catch (e) {
-          console.error("匯率 JSON 解析失敗：", res);
-        }
+        } catch (e) { console.error("Currency Parse Error", res); }
       }
     };
 
@@ -507,31 +476,30 @@ const App = () => {
 
     return (
       <div className="bg-white p-12 rounded-[4rem] shadow-sm border text-center animate-in fade-in duration-500 max-w-4xl mx-auto w-full">
-        <h3 className="text-2xl font-black mb-10 flex items-center justify-center gap-2"><Coins className="text-yellow-600"/> 匯率即時查詢</h3>
-        
+        <h3 className="text-2xl font-black mb-10 flex items-center justify-center gap-2"><Coins className="text-yellow-600"/> 匯率換算助理</h3>
         {info ? (
           <div className="space-y-8 animate-in zoom-in duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-2xl mx-auto">
                <div className="p-8 bg-slate-50 rounded-[3rem] border border-slate-100">
-                  <p className="text-[10px] font-black text-slate-400 mb-2 tracking-widest">輸入台幣 TWD</p>
+                  <p className="text-[10px] font-black text-slate-400 mb-2 tracking-widest uppercase">Input TWD</p>
                   <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="bg-transparent text-5xl font-black w-full text-center outline-none text-slate-800" />
                </div>
-               <div className="p-8 bg-blue-600 text-white rounded-[3rem] shadow-2xl shadow-blue-200 flex flex-col items-center justify-center">
-                  <p className="text-[10px] font-black opacity-60 mb-2 tracking-widest">估算 {info.currencyName}</p>
+               <div className="p-8 bg-blue-600 text-white rounded-[3rem] shadow-2xl flex flex-col items-center justify-center">
+                  <p className="text-[10px] font-black opacity-60 mb-2 tracking-widest uppercase">Est. {info.currencyName}</p>
                   <div className="text-5xl font-black truncate w-full">{Number(calculatedValue).toLocaleString()}</div>
-                  <p className="text-[10px] mt-4 opacity-80 font-black bg-white/20 px-4 py-1 rounded-full">1 TWD = {info.rate} {info.currencyName}</p>
+                  <p className="text-[10px] mt-4 opacity-80 font-black bg-white/20 px-4 py-1 rounded-full uppercase">Rate: 1 TWD = {info.rate}</p>
                </div>
             </div>
             <div className="bg-slate-50 p-8 rounded-[3rem] border text-left italic text-sm text-slate-500 font-bold leading-relaxed shadow-inner">
-               <Sparkles size={16} className="text-blue-500 mb-2"/>
+               <Sparkles size={16} className="text-blue-500 mb-2 inline mr-2"/>
                {info.tips}
             </div>
-            <button onClick={fetchRate} className="text-slate-300 text-xs font-bold underline hover:text-blue-600 transition-all">重新獲取匯率資料</button>
+            <button onClick={fetchRate} className="text-slate-300 text-xs font-bold underline hover:text-blue-600">重新獲取匯率資料</button>
           </div>
         ) : (
           <div className="py-10">
-            <Coins className="text-blue-100 mx-auto mb-6" size={100} />
-            <p className="text-slate-400 font-bold mb-8 uppercase tracking-widest">獲取 {tripInfo.country} 貨幣資訊中...</p>
+            <Coins className="text-blue-50 mx-auto mb-6" size={100} />
+            <p className="text-slate-400 font-bold mb-8 uppercase tracking-widest text-xs">查尋「${tripInfo.country}」最新匯率中...</p>
             <button onClick={fetchRate} disabled={aiLoading} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl flex items-center gap-3 mx-auto hover:scale-105 active:scale-95 transition-all">
               {aiLoading ? <Loader2 className="animate-spin" size={24}/> : <Coins size={24}/>} 查詢即時匯率
             </button>
@@ -541,13 +509,11 @@ const App = () => {
     );
   };
 
-  // --- 主視圖邏輯 ---
-
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center h-screen space-y-4">
          <Loader2 className="animate-spin text-blue-600" size={48} />
-         <p className="text-slate-500 font-bold tracking-widest italic">安全連線建立中...</p>
+         <p className="text-slate-500 font-bold tracking-widest italic">建立安全連線中...</p>
       </div>
     );
   }
@@ -560,7 +526,7 @@ const App = () => {
             <Plane size={48} />
           </div>
           <h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1>
-          <p className="text-slate-400 font-bold tracking-widest uppercase text-sm italic">智能導覽，讓旅行從此簡單</p>
+          <p className="text-slate-400 font-bold tracking-widest uppercase text-sm italic">為您的旅程注入 AI 靈魂</p>
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
@@ -570,25 +536,25 @@ const App = () => {
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">國家</label>
-                  <input required placeholder="目的地國家" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} />
+                  <input required placeholder="如: 日本" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">城市</label>
-                  <input required placeholder="目的地城市" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} />
+                  <input required placeholder="如: 東京" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">出發日期</label>
-                  <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
+                  <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">天數</label>
-                  <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
+                  <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
                 </div>
               </div>
               <button disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-2">
-                {isLoading ? <Loader2 className="animate-spin" size={24}/> : <><Plus size={24}/> 開始旅程</>}
+                {isLoading ? <Loader2 className="animate-spin" size={24}/> : <><Plus size={24}/> 開始規劃旅程</>}
               </button>
             </form>
           </div>
@@ -607,26 +573,22 @@ const App = () => {
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{trip.country} · {trip.startDate}</p>
                     </div>
                   </div>
-                  <ChevronRight className="text-slate-200 group-hover:text-blue-600" />
+                  <ChevronRight className="text-slate-200 group-hover:text-blue-600 transition-colors" />
                 </div>
               ))}
             </div>
           </div>
         </div>
-        
-        {/* 版本標記 */}
-        <div className="mt-12 text-slate-300 text-[10px] font-bold uppercase tracking-widest">
-           {VERSION_INFO}
-        </div>
+        <div className="mt-12 text-slate-300 text-[10px] font-bold uppercase tracking-widest">{VERSION_INFO}</div>
       </div>
     );
   }
 
   return (
-    <div className="w-full flex flex-col items-center pb-24">
+    <div className="w-full flex flex-col items-center pb-24 min-h-screen">
       <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
         <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}>
-          <div className="p-2 bg-blue-600 text-white rounded-2xl group-hover:rotate-12 transition-transform shadow-lg">
+          <div className="p-2 bg-blue-600 text-white rounded-2xl group-hover:rotate-12 transition-transform shadow-lg shadow-blue-100">
             <Plane size={24} className="rotate-45" />
           </div>
           <span className="tracking-tighter uppercase font-black">Traveler</span>
