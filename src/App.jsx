@@ -10,18 +10,20 @@ import {
   doc, 
   setDoc, 
   onSnapshot, 
-  updateDoc
+  updateDoc,
+  collection,
+  query
 } from 'firebase/firestore';
 import { 
   Plane, Calendar, Plus, Trash2, Clock, Share2, 
-  Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon
+  Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon, ChevronRight
 } from 'lucide-react';
 
 /**
  * 🚀 更新重點：
- * 1. 極致置中修復：透過強制 CSS 覆蓋 Vite 預設樣式，確保首頁在實際網頁中 100% 居中。
- * 2. 自動日期計算：根據出發日期自動顯示每一天的日期 (如 2026/02/05)。
- * 3. 完整時間線：景點會根據時間自動由早到晚排序。
+ * 1. 首頁行程列表：新增「我的旅程」區塊，顯示所有已建立的行程。
+ * 2. 雲端同步列表：透過 onSnapshot 即時獲取雲端行程資料。
+ * 3. 置中與日期計算：維持原有的極致置中與自動日期計算功能。
  */
 
 const getFirebaseConfig = () => {
@@ -49,13 +51,14 @@ const App = () => {
   const [view, setView] = useState('home');
   const [user, setUser] = useState(null);
   const [tripId, setTripId] = useState(null);
+  const [trips, setTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeDay, setActiveDay] = useState(1);
   const [tripInfo, setTripInfo] = useState({ country: '', city: '', startDate: '', duration: 3 });
   const [itinerary, setItinerary] = useState({});
   const [newEntry, setNewEntry] = useState({ time: '09:00', spot: '' });
 
-  // 🛠 強力重設樣式，確保 100% 置中
+  // 🛠 強力重設樣式，確保首頁在內容增多時依然美觀且置中
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script');
@@ -67,21 +70,16 @@ const App = () => {
     const style = document.createElement('style');
     style.innerHTML = `
       html, body, #root {
-        height: 100% !important;
+        min-height: 100% !important;
         width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
+        background-color: #f8fafc;
+      }
+      #root {
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
-        justify-content: center !important;
-        background-color: #f8fafc; /* slate-50 */
-      }
-      #root > div {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
       }
     `;
     document.head.appendChild(style);
@@ -97,16 +95,36 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 行程監聽
+  // 監聽所有行程列表 (首頁用)
   useEffect(() => {
-    if (!user || !tripId) return;
+    if (!user || !db) return;
+    const tripsRef = collection(db, 'artifacts', appId, 'public', 'data', 'trips');
+    return onSnapshot(tripsRef, (snapshot) => {
+      const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // 依建立時間排序 (最新的在前面)
+      setTrips(tripList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    });
+  }, [user]);
+
+  // 監聽單一行程詳細資料 (編輯器用)
+  useEffect(() => {
+    if (!user || !tripId || !db) return;
     const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
-    return onSnapshot(itinRef, (docSnap) => {
+    const unsubItin = onSnapshot(itinRef, (docSnap) => {
       if (docSnap.exists()) {
         setItinerary(docSnap.data().days || {});
         setView('editor');
       }
     });
+
+    const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
+    const unsubTrip = onSnapshot(tripRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setTripInfo(docSnap.data());
+      }
+    });
+
+    return () => { unsubItin(); unsubTrip(); };
   }, [user, tripId]);
 
   // 日期計算函式
@@ -128,6 +146,7 @@ const App = () => {
         ...tripInfo, creator: user.uid, createdAt: new Date().toISOString()
       });
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', newId), { days });
+      // 建立後自動進入編輯
       setTripId(newId);
     } finally { setIsLoading(false); }
   };
@@ -153,44 +172,87 @@ const App = () => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col items-center">
+    <div className="w-full flex flex-col items-center min-h-screen">
       {view === 'home' ? (
-        <div className="w-full flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-700">
-          <div className="max-w-md w-full text-center">
-            <div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-12 transition-transform hover:rotate-0">
+        <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-in fade-in duration-700">
+          <div className="text-center mb-16">
+            <div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0">
               <Plane size={48} />
             </div>
-            <h1 className="text-5xl font-black mb-6 tracking-tighter text-slate-900">規劃旅程</h1>
-            <p className="text-slate-400 font-bold mb-12 tracking-widest uppercase">專屬雲端同步系統</p>
-            
-            <form onSubmit={handleCreate} className="bg-white p-10 rounded-[3.5rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] space-y-8 text-left border border-white">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">國家</label>
-                  <input required placeholder="目的地國家" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} />
+            <h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900">旅遊規劃網站</h1>
+            <p className="text-slate-400 font-bold tracking-widest uppercase">Traveler · 雲端即時同步行程</p>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
+            {/* 左側：建立行程 */}
+            <div className="space-y-6">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-2">
+                <Plus className="text-blue-600" /> 建立新旅程
+              </h3>
+              <form onSubmit={handleCreate} className="bg-white p-10 rounded-[3rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] space-y-8 border border-white">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">國家</label>
+                    <input required placeholder="目的地國家" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">城市</label>
+                    <input required placeholder="目的地城市" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">城市</label>
-                  <input required placeholder="目的地城市" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} />
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">出發日期</label>
+                    <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">旅遊天數</label>
+                    <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
+                  </div>
                 </div>
+                <button disabled={isLoading || !user} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl shadow-blue-100 transition-all active:scale-95 disabled:opacity-50 text-lg flex items-center justify-center gap-2">
+                  {isLoading ? <Loader2 className="animate-spin" /> : <><Plus size={24}/> 開始我的旅程</>}
+                </button>
+              </form>
+            </div>
+
+            {/* 右側：現有行程列表 */}
+            <div className="space-y-6">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-2">
+                <Calendar className="text-blue-600" /> 我的旅程清單 ({trips.length})
+              </h3>
+              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 scrollbar-hide">
+                {trips.map((trip) => (
+                  <div 
+                    key={trip.id} 
+                    onClick={() => setTripId(trip.id)}
+                    className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-5">
+                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        <Globe size={24} />
+                      </div>
+                      <div>
+                        <h4 className="text-xl font-black text-slate-800 tracking-tight">{trip.city} 之旅</h4>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+                          {trip.country} · {trip.startDate}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="text-slate-200 group-hover:text-blue-600 transition-colors" />
+                  </div>
+                ))}
+                {trips.length === 0 && (
+                  <div className="bg-slate-50/50 border-2 border-dashed border-slate-100 rounded-[2rem] py-20 text-center">
+                    <p className="text-slate-300 font-bold italic">目前還沒有建立任何行程</p>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">出發日期</label>
-                  <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">旅遊天數</label>
-                  <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
-                </div>
-              </div>
-              <button disabled={isLoading || !user} className="w-full bg-slate-900 hover:bg-black text-white py-6 rounded-3xl font-black shadow-2xl shadow-slate-200 transition-all active:scale-95 disabled:opacity-50 text-lg">
-                {isLoading ? <Loader2 className="animate-spin mx-auto" /> : "開啟雲端規劃"}
-              </button>
-            </form>
+            </div>
           </div>
         </div>
       ) : (
+        /* 編輯器視圖 */
         <div className="w-full flex flex-col items-center pb-24 min-h-screen">
           <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
             <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.pathname}>
