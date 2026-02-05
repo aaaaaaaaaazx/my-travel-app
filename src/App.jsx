@@ -22,14 +22,14 @@ import {
 } from 'lucide-react';
 
 /**
- * 🚀 行程規劃與 UI 優化版 (2026.02.05):
- * 1. UI 更新：天數導覽改為方形卡片並顯示日期，增加每日大標題。
- * 2. 權限修復：嚴格遵守身份驗證後才啟動 Firestore 監聽，解決 Permission Denied。
- * 3. 匯率整合：完整保留自定義匯率管理功能。
- * 4. 資料救援：固定 appId 並清理路徑，找回富國島行程。
+ * 🚀 行程規劃與每日主題增強版 (2026.02.05):
+ * 1. 每日大標題：Day X 旁加入可編輯的今日主題欄位，自動同步雲端。
+ * 2. 方形日期導覽：上方導覽維持寬大方形卡片，顯示具體月份日期。
+ * 3. 權限修復：嚴格遵守身份驗證後才啟動 Firestore 監聽，解決 Permission Denied。
+ * 4. 匯率整合：完整保留自定義匯率管理功能。
  */
 
-const VERSION_INFO = "最後更新：2026/02/05 15:40 (UI 優化與權限修復版)";
+const VERSION_INFO = "最後更新：2026/02/05 15:45 (每日主題編輯版)";
 
 // --- Firebase 初始化 ---
 const getFirebaseConfig = () => {
@@ -99,7 +99,7 @@ const CurrencyMaster = () => {
       if (data.result === 'success') {
         setRates(data.rates);
         setError(null);
-      } else { throw new Error('匯率更新失敗'); }
+      } else { throw new Error('無法獲取匯率數據'); }
     } catch (err) {
       setError('連線失敗，請檢查網路。');
     } finally { setLoading(false); }
@@ -130,7 +130,7 @@ const CurrencyMaster = () => {
         <div className="p-8 md:p-12">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-6 items-center">
             <div className="md:col-span-3">
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">輸入金額</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">輸入金額</label>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"><DollarSign size={20} /></div>
                 <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none transition-all text-2xl font-black" />
@@ -143,7 +143,7 @@ const CurrencyMaster = () => {
             </div>
             <div className="flex justify-center md:col-span-1"><div className="bg-blue-50 p-3 rounded-full text-blue-600 shadow-inner"><ArrowLeftRight size={24} /></div></div>
             <div className="md:col-span-3">
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">轉換結果</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 ml-1">轉換結果</label>
               <div className="w-full pl-6 pr-4 py-4 bg-blue-600 rounded-2xl text-white flex items-center justify-between shadow-xl shadow-blue-100">
                 <div><span className="text-3xl font-black">{convertedAmount}</span><p className="text-blue-200 text-[10px] mt-1 font-bold">{targetCurrency}</p></div>
                 <select value={targetCurrency} onChange={(e) => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-lg px-2 py-1 text-xs font-black outline-none">
@@ -410,16 +410,24 @@ const App = () => {
                   ))}
                 </div>
 
-                {/* Big Day Header */}
-                <div className="text-center md:text-left space-y-2">
-                  <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none">
-                    Day {activeDay}
-                  </h2>
+                {/* Big Day Header with Editable Title */}
+                <div className="text-center md:text-left space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-end gap-4">
+                    <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">
+                      Day {activeDay}
+                    </h2>
+                    <input 
+                      className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 flex-1 transition-all"
+                      placeholder="為這天取個主題大標題..."
+                      value={itineraryData.days?.[activeDay]?.title || ''}
+                      onChange={(e) => updateItinField(`days.${activeDay}.title`, e.target.value)}
+                    />
+                  </div>
                   <div className="flex items-center justify-center md:justify-start gap-3">
-                     <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-sm">
+                     <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-sm shrink-0">
                        {getFormattedDate(tripInfo.startDate, activeDay)}
                      </p>
-                     <div className="h-1 flex-1 bg-slate-100 rounded-full max-w-[200px]"></div>
+                     <div className="h-1 flex-1 bg-slate-50 rounded-full max-w-[300px]"></div>
                   </div>
                 </div>
 
@@ -434,10 +442,10 @@ const App = () => {
                   }} className="mb-12 space-y-3 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner">
                     <div className="flex gap-3 flex-wrap md:flex-nowrap">
                        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto"><Clock size={18} className="text-blue-500" /><input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24" /></div>
-                       <input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none" />
+                       <input placeholder="今天要在那裡留下回憶？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none" />
                     </div>
                     <div className="flex gap-3">
-                       <textarea placeholder="詳細備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none" />
+                       <textarea placeholder="詳細備註 (交通、必吃、行程小筆記)..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm" />
                        <button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg"><Plus size={24}/><span className="text-[10px]">加入</span></button>
                     </div>
                   </form>
@@ -458,7 +466,7 @@ const App = () => {
                             await updateItinField(`days.${activeDay}.spots`, spots);
                           }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowDown size={20}/></button>
                         </div>
-                        <div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl'}`}>
+                        <div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
                           {editingId === item.id ? (
                             <div className="space-y-4 flex-1 animate-fade-in">
                                <div className="flex gap-2"><input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="p-3 border rounded-xl font-black text-sm w-32 bg-slate-50 outline-none" /><input value={editData.spot} onChange={e => setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black text-sm bg-slate-50 outline-none" /></div>
@@ -477,7 +485,7 @@ const App = () => {
                                 </div>
                               </div>
                               <div className="flex flex-col gap-2 opacity-0 group-hover/item:opacity-100 transition-all">
-                                <button onClick={() => { setEditingId(item.id); setTempEditData({ ...item }); setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl"><Edit3 size={20} /></button>
+                                <button onClick={() => { setEditingId(item.id); setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl"><Edit3 size={20} /></button>
                                 <button onClick={async () => { const updated = itineraryData.days[activeDay].spots.filter(s => s.id !== item.id); await updateItinField(`days.${activeDay}.spots`, updated); }} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl"><Trash2 size={20} /></button>
                               </div>
                             </div>
@@ -486,7 +494,7 @@ const App = () => {
                       </div>
                     ))}
                     {(!itineraryData.days[activeDay]?.spots || itineraryData.days[activeDay].spots.length === 0) && (
-                       <div className="py-24 text-center border-4 border-dashed border-slate-50 rounded-[3rem]"><Calendar className="text-slate-100 mx-auto mb-6" size={80} /><p className="text-slate-300 font-black text-xl italic">今天還沒有安排任何景點！</p></div>
+                       <div className="py-24 text-center border-4 border-dashed border-slate-50 rounded-[3rem]"><Calendar className="text-slate-100 mx-auto mb-6" size={80} /><p className="text-slate-300 font-black text-xl italic text-center">今天還沒有安排任何景點！</p></div>
                     )}
                   </div>
                 </div>
