@@ -21,14 +21,13 @@ import {
 } from 'lucide-react';
 
 /**
- * 🚀 全功能整合修復版 (2026.02.05):
- * 1. AI 引擎優化：遵循系統規範將 apiKey 設為 ""，由環境自動注入。
- * 2. 搜尋穩定化：優化 Payload 結構與 Google Search 工具配置。
- * 3. 排序靈敏度：極速同步排序邏輯。
- * 4. 狀態回饋：加入 aiStatus 以即時顯示 AI 執行進度與報錯。
+ * 🚀 行程編修與 AI 引擎修復版 (2026.02.05):
+ * 1. 行程編修：景點支援原位修改與儲存。
+ * 2. AI 修復：解決 "unregistered callers" 報錯，優化金鑰對接。
+ * 3. 排序優化：支援靈敏的上下移動。
  */
 
-const VERSION_INFO = "最後更新：2026/02/05 08:15 (Google 搜尋修復版)";
+const VERSION_INFO = "最後更新：2026/02/05 08:35 (行程編修與 AI 穩定版)";
 
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -52,10 +51,10 @@ const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id.replace(/\//g, '_') : 'travel-yeh';
 
 /**
- * 💡 重要提示：依照環境規範，apiKey 必須保持為空字串 ""。
- * 執行環境會自動將您的 API 金鑰注入。
+ * 🔑 API 金鑰設定
+ * 如果 Preview 顯示 "unregistered callers"，請將您的金鑰貼入 "" 之中。
  */
-const apiKey = ""; 
+const apiKey = "AIzaSyAJonoRzATBWnDzKwzRe-Vg2Knmb55uv1Q"; 
 
 const DEFAULT_CHECKLIST = [
   { id: 'c1', text: '護照、證件', done: false },
@@ -128,7 +127,7 @@ const App = () => {
       #root { display: flex !important; flex-direction: column !important; align-items: center !important; }
       .scrollbar-hide::-webkit-scrollbar { display: none; }
       @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+      .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
     `;
     document.head.appendChild(style);
   }, []);
@@ -214,8 +213,12 @@ const App = () => {
     } finally { setIsLoading(false); }
   };
 
-  // --- 核心 AI 處理邏輯 (Grounding 修復版) ---
+  // --- 核心 AI 處理邏輯 ---
   const callGemini = async (userQuery, isJson = false) => {
+    if (!apiKey) {
+      setAiStatus({ type: 'error', message: '尚未填入 API Key，請檢查程式碼。' });
+      return null;
+    }
     setAiLoading(true);
     setAiStatus({ type: 'loading', message: '正在呼叫 Google 搜尋獲取最新數據...' });
     
@@ -239,10 +242,7 @@ const App = () => {
       
       let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
       setAiStatus({ type: 'success', message: '查詢成功！' });
-      
-      // 清除成功訊息
       setTimeout(() => setAiStatus({ type: '', message: '' }), 3000);
-      
       return isJson ? cleanJsonResponse(text) : text;
     } catch (e) {
       console.error("Gemini 錯誤:", e);
@@ -257,6 +257,9 @@ const App = () => {
 
   const ItineraryView = () => {
     const [newSpot, setNewSpot] = useState({ time: '09:00', spot: '', note: '' });
+    const [editingSpotId, setEditingSpotId] = useState(null);
+    const [editData, setEditData] = useState({});
+    
     const currentDay = itineraryData.days[activeDay] || { spots: [] };
 
     const addSpot = async (e) => {
@@ -264,6 +267,17 @@ const App = () => {
       const updated = [...(currentDay.spots || []), { ...newSpot, id: Date.now().toString() }];
       await updateItinField(`days.${activeDay}.spots`, updated);
       setNewSpot({ time: '09:00', spot: '', note: '' });
+    };
+
+    const startEdit = (item) => {
+      setEditingSpotId(item.id);
+      setEditData({ ...item });
+    };
+
+    const saveEdit = async () => {
+      const updated = currentDay.spots.map(s => s.id === editingSpotId ? editData : s);
+      await updateItinField(`days.${activeDay}.spots`, updated);
+      setEditingSpotId(null);
     };
 
     const moveSpot = async (idx, dir) => {
@@ -280,7 +294,7 @@ const App = () => {
       <div className="animate-fade-in max-w-4xl mx-auto w-full">
         <div className="flex gap-3 overflow-x-auto pb-6 mb-8 scrollbar-hide">
           {Object.keys(itineraryData.days).map(day => (
-            <button key={day} onClick={() => setActiveDay(parseInt(day))} className={`shrink-0 px-8 py-4 rounded-2xl font-black transition-all border ${activeDay === parseInt(day) ? 'bg-blue-600 text-white shadow-xl scale-105 border-blue-600' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+            <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingSpotId(null);}} className={`shrink-0 px-8 py-4 rounded-2xl font-black transition-all border ${activeDay === parseInt(day) ? 'bg-blue-600 text-white shadow-xl scale-105 border-blue-600' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
               D{day} · {getFormattedDate(tripInfo.startDate, parseInt(day)).split('/').slice(1).join('/')}
             </button>
           ))}
@@ -295,7 +309,7 @@ const App = () => {
             <div className="w-16 h-1.5 bg-blue-600 rounded-full mb-2"></div>
           </div>
 
-          <form onSubmit={addSpot} className="mb-10 space-y-3 bg-slate-50 p-6 rounded-3xl border border-slate-100">
+          <form onSubmit={addSpot} className="mb-10 space-y-3 bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-inner">
             <div className="flex gap-3 flex-wrap md:flex-nowrap">
                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm">
                  <Clock size={18} className="text-blue-500" />
@@ -304,7 +318,7 @@ const App = () => {
                <input placeholder="今天要在那裡留下回憶？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" />
             </div>
             <div className="flex gap-3">
-               <textarea placeholder="詳細備註 (必吃、交通、門票資訊)..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium outline-none h-20 resize-none text-sm shadow-sm" />
+               <textarea placeholder="詳細備註 (交通、票價、必玩資訊)..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium outline-none h-20 resize-none text-sm shadow-sm" />
                <button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 transition-all"><Plus size={24}/><span className="text-[10px]">加入</span></button>
             </div>
           </form>
@@ -317,18 +331,40 @@ const App = () => {
                   <div className="w-14 h-14 bg-white border-4 border-slate-50 rounded-2xl flex items-center justify-center text-[10px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div>
                   <button onClick={() => moveSpot(idx, 1)} disabled={idx === currentDay.spots.length - 1} className="text-slate-200 hover:text-blue-600 transition-all disabled:opacity-0 active:scale-125"><ArrowDown size={20}/></button>
                 </div>
-                <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] flex justify-between items-start hover:shadow-2xl transition-all border-l-8 border-l-transparent hover:border-l-blue-600 shadow-sm">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                       <h4 className="text-2xl font-black text-slate-800 tracking-tight">{item.spot}</h4>
-                       <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-blue-600 hover:text-white transition-all"><MapPin size={12}/> 地圖</a>
+                
+                <div className={`p-8 bg-white border rounded-[2.5rem] flex justify-between items-start transition-all shadow-sm ${editingSpotId === item.id ? 'border-blue-500 ring-8 ring-blue-50/50 shadow-2xl' : 'border-slate-100 hover:shadow-xl border-l-8 border-l-transparent hover:border-l-blue-600'}`}>
+                  {editingSpotId === item.id ? (
+                    <div className="space-y-4 flex-1 animate-fade-in">
+                       <div className="flex gap-2">
+                          <input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="p-3 border rounded-xl font-black text-sm w-32 bg-slate-50" />
+                          <input value={editData.spot} onChange={e => setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black text-sm bg-slate-50" />
+                       </div>
+                       <textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl text-sm h-24 resize-none bg-slate-50" />
+                       <div className="flex justify-end gap-3">
+                          <button onClick={() => setEditingSpotId(null)} className="text-sm font-bold text-slate-400 px-4">取消</button>
+                          <button onClick={saveEdit} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg flex items-center gap-2"><Save size={16}/> 儲存更新</button>
+                       </div>
                     </div>
-                    <p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{item.note || "點擊右側垃圾桶刪除項目..."}</p>
-                  </div>
-                  <button onClick={async () => {
-                    const filtered = currentDay.spots.filter(s => s.id !== item.id);
-                    await updateItinField(`days.${activeDay}.spots`, filtered);
-                  }} className="text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 p-2 transition-all"><Trash2 size={18}/></button>
+                  ) : (
+                    <>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                           <h4 className="text-2xl font-black text-slate-800 tracking-tight">{item.spot}</h4>
+                           <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-blue-600 hover:text-white transition-all"><MapPin size={12}/> 地圖</a>
+                        </div>
+                        <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                           <p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{item.note || "點擊右側圖示進行編修..."}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all ml-4">
+                        <button onClick={() => startEdit(item)} className="p-3 text-slate-300 hover:text-blue-500 bg-slate-50 rounded-2xl"><Edit3 size={18}/></button>
+                        <button onClick={async () => {
+                          const filtered = currentDay.spots.filter(s => s.id !== item.id);
+                          await updateItinField(`days.${activeDay}.spots`, filtered);
+                        }} className="p-3 text-slate-300 hover:text-red-500 bg-slate-50 rounded-2xl"><Trash2 size={18}/></button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -341,12 +377,20 @@ const App = () => {
   const FlightView = () => {
     const fInfo = itineraryData.flightsInfo || { departDate: '', returnDate: '', flights: [] };
     const [newF, setNewF] = useState({ flightNo: '', time: '08:00', type: '去程' });
+    const [editingFlightId, setEditingFlightId] = useState(null);
+    const [flightEditData, setFlightEditData] = useState({});
 
     const addFlight = async (e) => {
       e.preventDefault();
       const updated = [...(fInfo.flights || []), { ...newF, id: Date.now().toString() }];
       await updateItinField(`flightsInfo.flights`, updated);
       setNewF({ flightNo: '', time: '08:00', type: '去程' });
+    };
+
+    const saveFlightEdit = async () => {
+      const updated = fInfo.flights.map(f => f.id === editingFlightId ? flightEditData : f);
+      await updateItinField(`flightsInfo.flights`, updated);
+      setEditingFlightId(null);
     };
 
     const getFlightAi = async (id, flightNo) => {
@@ -370,35 +414,47 @@ const App = () => {
           <div className="grid grid-cols-2 gap-4 mb-10">
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">去程日期</label>
-              <input type="date" value={fInfo.departDate} onChange={e => updateItinField('flightsInfo.departDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" />
+              <input type="date" value={fInfo.departDate} onChange={e => updateItinField('flightsInfo.departDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold shadow-inner" />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">回程日期</label>
-              <input type="date" value={fInfo.returnDate} onChange={e => updateItinField('flightsInfo.returnDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" />
+              <input type="date" value={fInfo.returnDate} onChange={e => updateItinField('flightsInfo.returnDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold shadow-inner" />
             </div>
           </div>
 
           <div className="space-y-4 mb-10">
             {fInfo.flights?.map(f => (
-              <div key={f.id} className="p-6 bg-slate-50 rounded-3xl border flex justify-between items-center group relative overflow-hidden">
-                <div className="flex items-center gap-4 relative z-10">
-                  <div className="bg-blue-600 text-white p-3 rounded-2xl shadow-lg shadow-blue-100"><PlaneTakeoff size={20}/></div>
-                  <div>
-                    <div className="flex items-center gap-3">
-                       <span className="text-xl font-black text-slate-800">{f.flightNo}</span>
-                       <span className="bg-white px-2 py-0.5 rounded-full text-[9px] font-black border border-slate-200 text-slate-400 uppercase">{f.type}</span>
-                    </div>
-                    <p className="text-xs text-slate-400 font-bold mt-1">{f.time}</p>
-                    {f.aiInfo && <p className="text-[11px] text-slate-500 italic mt-2 bg-white/50 p-2 rounded-lg border border-white leading-relaxed">{f.aiInfo}</p>}
+              <div key={f.id} className={`p-6 bg-slate-50 rounded-3xl border flex justify-between items-center group relative overflow-hidden transition-all ${editingFlightId === f.id ? 'border-blue-500 shadow-lg' : ''}`}>
+                {editingFlightId === f.id ? (
+                  <div className="flex-1 flex gap-2 animate-fade-in">
+                     <input value={flightEditData.flightNo} onChange={e => setFlightEditData({...flightEditData, flightNo: e.target.value.toUpperCase()})} className="flex-1 p-3 border rounded-xl font-black text-sm bg-white" />
+                     <input type="time" value={flightEditData.time} onChange={e => setFlightEditData({...flightEditData, time: e.target.value})} className="p-3 border rounded-xl font-black text-sm w-32 bg-white" />
+                     <button onClick={saveFlightEdit} className="bg-blue-600 text-white px-5 rounded-xl text-xs font-black">儲存</button>
+                     <button onClick={() => setEditingFlightId(null)} className="text-slate-400 text-xs px-2">取消</button>
                   </div>
-                </div>
-                <div className="flex gap-2 relative z-10 opacity-0 group-hover:opacity-100 transition-all">
-                    <button onClick={() => getFlightAi(f.id, f.flightNo)} className="p-2 text-blue-500 hover:bg-blue-100 rounded-xl"><Sparkles size={18}/></button>
-                    <button onClick={async () => {
-                      const filtered = fInfo.flights.filter(fl => fl.id !== f.id);
-                      await updateItinField(`flightsInfo.flights`, filtered);
-                    }} className="p-2 text-slate-300 hover:text-red-500 transition-all"><Trash2 size={18}/></button>
-                </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-4 relative z-10">
+                      <div className="bg-blue-600 text-white p-3 rounded-2xl shadow-lg shadow-blue-100"><PlaneTakeoff size={20}/></div>
+                      <div>
+                        <div className="flex items-center gap-3">
+                           <span className="text-xl font-black text-slate-800">{f.flightNo}</span>
+                           <span className="bg-white px-2 py-0.5 rounded-full text-[9px] font-black border border-slate-200 text-slate-400 uppercase">{f.type}</span>
+                        </div>
+                        <p className="text-xs text-slate-400 font-bold mt-1">{f.time}</p>
+                        {f.aiInfo && <p className="text-[11px] text-slate-500 italic mt-2 bg-white/80 p-3 rounded-xl border border-white leading-relaxed">{f.aiInfo}</p>}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 relative z-10 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onClick={() => {setEditingFlightId(f.id); setFlightEditData({...f});}} className="p-2.5 text-slate-300 hover:text-blue-500 bg-white rounded-xl shadow-sm"><Edit3 size={18}/></button>
+                        <button onClick={() => getFlightAi(f.id, f.flightNo)} className="p-2.5 text-blue-500 hover:bg-blue-100 bg-white rounded-xl shadow-sm"><Sparkles size={18}/></button>
+                        <button onClick={async () => {
+                          const filtered = fInfo.flights.filter(fl => fl.id !== f.id);
+                          await updateItinField(`flightsInfo.flights`, filtered);
+                        }} className="p-2.5 text-slate-300 hover:text-red-500 bg-white rounded-xl shadow-sm"><Trash2 size={18}/></button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -416,7 +472,7 @@ const App = () => {
   const WeatherView = () => {
     const currentWeather = itineraryData.days[activeDay]?.weather;
     const fetchWeather = async () => {
-      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣。必須輸出純 JSON：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
+      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣預報。必須輸出純 JSON：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
       const res = await callGemini(prompt, true);
       if (res) {
         try { const data = JSON.parse(res); await updateItinField(`days.${activeDay}.weather`, data); } catch (e) {}
@@ -434,7 +490,7 @@ const App = () => {
             <div className="bg-blue-50 p-8 rounded-[3rem] border border-blue-100 max-w-md mx-auto shadow-sm">
               <p className="text-blue-700 font-bold text-sm leading-relaxed">{currentWeather.tips}</p>
             </div>
-            <button onClick={fetchWeather} className="text-slate-300 text-xs font-bold underline mt-8 hover:text-blue-600">更新天氣</button>
+            <button onClick={fetchWeather} className="text-slate-300 text-xs font-bold underline mt-8 hover:text-blue-600 transition-colors">重新獲取天氣資料</button>
           </div>
         ) : (
           <div className="py-10">
@@ -467,7 +523,7 @@ const App = () => {
         <h3 className="text-2xl font-black mb-8 flex items-center gap-2"><ListChecks className="text-green-500"/> 行前準備清單</h3>
         <form onSubmit={addItem} className="flex gap-3 mb-10 bg-slate-50 p-4 rounded-3xl border border-slate-100">
            <input placeholder="手動新增清單項目..." value={newItem} onChange={e => setNewItem(e.target.value)} className="flex-1 p-3 bg-white border rounded-2xl outline-none font-bold shadow-sm" />
-           <button type="submit" className="bg-slate-900 text-white px-8 rounded-2xl font-black active:scale-95">新增</button>
+           <button type="submit" className="bg-slate-900 text-white px-8 rounded-2xl font-black active:scale-95 transition-all">新增</button>
         </form>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
            {list.map(item => (
@@ -533,7 +589,7 @@ const App = () => {
     return (
       <div className="flex flex-col items-center justify-center h-screen space-y-4">
          <Loader2 className="animate-spin text-blue-600" size={48} />
-         <p className="text-slate-500 font-bold tracking-widest italic">安全環境建立中...</p>
+         <p className="text-slate-500 font-bold tracking-widest italic text-center px-6">安全連線建立中...</p>
       </div>
     );
   }
