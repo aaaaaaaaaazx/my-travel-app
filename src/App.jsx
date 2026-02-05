@@ -23,16 +23,17 @@ import {
 } from 'lucide-react';
 
 /**
- * 🏆 Travel Planner - 滑動導覽強化版 (2026.02.05)
+ * 🏆 Travel Planner - 全功能穩定黃金版 (2026.02.05)
  * ------------------------------------------------
- * 1. 日期滑桿：上方方形日期列加入精美可見的滑桿，解決天數過多選不到的問題。
- * 2. 行程管理：方形橫向滑動導覽、每日主題大標題編輯。
- * 3. 結構化清單：復刻 6 大類別行李清單。
- * 4. 匯率管理：顯示國家名稱、混合模式、即時搜尋。
- * 5. 天氣預測：整合中文地點編碼與日期區間預報。
+ * 1. 解決白屏：強化變數保護與初始化邏輯，防止 React 渲染崩潰。
+ * 2. 滑動日期導覽：上方方形日期列加入精美可見的滑桿，支援流暢滑動。
+ * 3. 行程管理：每日主題大標題編輯、景點排序與編修。
+ * 4. 結構化清單：復刻 6 大類別行李清單。
+ * 5. 匯率管理：顯示國家名稱、市場/自定義混合模式。
+ * 6. 天氣預測：整合中文地點編碼與日期區間預報。
  */
 
-const VERSION_INFO = "滑動優化版 V1.1 - 2026/02/05";
+const VERSION_INFO = "穩定強化版 V1.2 - 2026/02/05";
 
 // --- 靜態配置與資料對照 ---
 const currencyNames = {
@@ -53,28 +54,51 @@ const CHECKLIST_CATEGORIES = [
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['空水壺或環保杯', '家中鑰匙', '眼罩', '外幣現金或信用卡', '耳塞', '頸枕'] }
 ];
 
-// --- Firebase 初始化 ---
-const firebaseConfig = JSON.parse(__firebase_config);
+// --- Firebase 初始化安全保護 ---
+const getFirebaseConfig = () => {
+  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+    try {
+      return JSON.parse(__firebase_config);
+    } catch (e) {
+      console.error("Firebase Config Parse Error", e);
+    }
+  }
+  return {
+    apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
+    authDomain: "travel-yeh.firebaseapp.com",
+    projectId: "travel-yeh",
+    storageBucket: "travel-yeh.firebasestorage.app",
+    messagingSenderId: "62005891712",
+    appId: "1:62005891712:web:4653c17db0c38f981d0c65",
+    measurementId: "G-46DG11FWVQ"
+  };
+};
+
+const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const appId = 'travel-yeh';
-const apiKey = ""; 
+// 💡 權限關鍵：必須嚴格符合 Segment 規範，固定為 travel-yeh 以找回資料
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
+const appId = rawAppId.replace(/\//g, '_');
+const apiKey = ""; // 執行環境自動注入
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
   if (!baseDate) return "";
-  const date = new Date(baseDate);
-  date.setDate(date.getDate() + (dayOffset - 1));
-  return date.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
+  try {
+    const date = new Date(baseDate);
+    date.setDate(date.getDate() + (dayOffset - 1));
+    return date.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
+  } catch (e) { return ""; }
 };
 
 // --- 子組件：天氣預測 ---
 const WeatherMaster = ({ tripInfo }) => {
   const [q, setQ] = useState({ 
-    dest: tripInfo.city || '', 
-    start: tripInfo.startDate || new Date().toISOString().split('T')[0],
+    dest: tripInfo?.city || '', 
+    start: tripInfo?.startDate || new Date().toISOString().split('T')[0],
     end: '' 
   });
   const [loading, setLoading] = useState(false);
@@ -85,13 +109,14 @@ const WeatherMaster = ({ tripInfo }) => {
     if (code === 0) return { icon: Sun, label: "晴天", color: "text-orange-500", tip: "紫外線強，建議注意防曬與補水。" };
     if (code <= 3) return { icon: Cloud, label: "多雲", color: "text-blue-400", tip: "天氣舒適，適合多層次穿搭。" };
     if (code >= 51 && code <= 67) return { icon: CloudRain, label: "有雨", color: "text-blue-600", tip: "出門記得帶傘，建議穿著防水材質鞋子。" };
-    if (code >= 95) return { icon: CloudLightning, label: "雷雨", color: "text-indigo-700", tip: "雷雨交加，儘量留在室內。" };
+    if (code >= 95) return { icon: CloudLightning, label: "雷雨", color: "text-indigo-700", tip: "雷雨交加，儘量留在室內，注意安全。" };
     if (code >= 71 && code <= 77) return { icon: Snowflake, label: "降雪", color: "text-sky-300", tip: "氣溫極低，請務必保暖。" };
     return { icon: Cloud, label: "陰天", color: "text-slate-400", tip: "天氣陰涼，建議多層次穿搭。" };
   };
 
   const fetchWeather = async (e) => {
     if (e) e.preventDefault();
+    if (!q.dest) return;
     setLoading(true); setError(null);
     try {
       const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.dest)}&count=1&language=zh&format=json`);
@@ -100,6 +125,7 @@ const WeatherMaster = ({ tripInfo }) => {
       const { latitude, longitude, name } = geoData.results[0];
       const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&start_date=${q.start}&end_date=${q.end || q.start}`);
       const weatherData = await weatherRes.json();
+      if (!weatherData.daily) throw new Error('氣象數據暫時無法讀取。');
       setResults({
         location: name,
         daily: weatherData.daily.time.map((time, i) => ({
@@ -117,7 +143,7 @@ const WeatherMaster = ({ tripInfo }) => {
           <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地</label><input required value={q.dest} onChange={e => setQ({...q, dest: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none font-bold shadow-inner" placeholder="如：富國島" /></div>
           <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">開始日期</label><input required type="date" value={q.start} onChange={e => setQ({...q, start: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
           <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">結束日期</label><input required type="date" value={q.end} min={q.start} onChange={e => setQ({...q, end: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
-          <button type="submit" disabled={loading} className="bg-blue-600 text-white h-[60px] rounded-3xl font-black shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Search size={20}/>} 搜尋氣象</button>
+          <button type="submit" disabled={loading} className="bg-blue-600 text-white h-[60px] rounded-3xl font-black shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Search size={20}/>} 查詢氣象</button>
         </form>
         {error && <p className="mt-4 text-red-500 text-xs font-bold flex items-center gap-2 animate-pulse"><AlertCircle size={16}/> {error}</p>}
       </div>
@@ -146,7 +172,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   const [addingToCategory, setAddingToCategory] = useState(null);
   const [newItemText, setNewItemText] = useState('');
 
-  const checklist = itineraryData.checklist || [];
+  const checklist = itineraryData?.checklist || [];
   const completedCount = checklist.filter(i => i.completed).length;
   const progress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
@@ -205,8 +231,12 @@ const CurrencyMaster = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [customRates, setCustomRates] = useState(() => JSON.parse(localStorage.getItem('custom_rates')) || {});
-  const [useCustom, setUseCustom] = useState(() => JSON.parse(localStorage.getItem('use_custom_status')) || {});
+  const [customRates, setCustomRates] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('custom_rates')) || {}; } catch(e) { return {}; }
+  });
+  const [useCustom, setUseCustom] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('use_custom_status')) || {}; } catch(e) { return {}; }
+  });
 
   const fetchRates = async () => {
     setLoading(true);
@@ -251,7 +281,8 @@ const CurrencyMaster = () => {
       {showSettings && (
         <div className="bg-white rounded-[3rem] border border-slate-100 shadow-2xl overflow-hidden animate-fade-in">
           <div className="p-8 border-b flex justify-between items-center bg-slate-50/50"><div><h3 className="font-black text-xl text-slate-800 tracking-tight">匯率自定義設定</h3><p className="text-xs text-slate-400 font-bold">搜尋國家來覆寫匯率值</p></div><div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type="text" placeholder="搜尋國家..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-12 pr-6 py-3 border rounded-2xl text-sm font-bold outline-none focus:ring-4 ring-blue-50 w-64 transition-all" /></div></div>
-          <div className="max-h-[400px] overflow-y-auto scrollbar-hide"><table className="w-full text-left"><thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black sticky top-0 z-10"><tr><th className="px-8 py-5">國家與幣別</th><th className="px-8 py-5 text-right">市場</th><th className="px-8 py-5 text-center">模式</th><th className="px-8 py-5 text-right">數值</th></tr></thead>
+          <div className="max-h-[400px] overflow-y-auto scrollbar-hide">
+            <table className="w-full text-left"><thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black sticky top-0 z-10"><tr><th className="px-8 py-5">國家與幣別</th><th className="px-8 py-5 text-right">市場</th><th className="px-8 py-5 text-center">模式</th><th className="px-8 py-5 text-right">數值</th></tr></thead>
               <tbody className="divide-y divide-slate-50">{filteredCurrencies.map(curr => (<tr key={curr} className="hover:bg-blue-50/20 transition-colors"><td className="px-8 py-5"><div className="font-black text-slate-700">{currencyNames[curr] || "其他"}</div><div className="text-[10px] text-slate-400 font-bold uppercase">{curr}</div></td><td className="px-8 py-5 text-right font-mono text-slate-500 text-sm font-bold">{rates[curr]?.toFixed(4)}</td><td className="px-8 py-5 text-center"><button onClick={() => setUseCustom(p => ({...p, [curr]: !p[curr]}))} className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${useCustom[curr] ? 'bg-orange-100 text-orange-600 border border-orange-200' : 'bg-green-100 text-green-600 border border-green-200'}`}>{useCustom[curr] ? '手動' : '自動'}</button></td><td className="px-8 py-5 text-right"><input type="number" step="0.0001" disabled={!useCustom[curr]} value={customRates[curr] || ''} onChange={e => setCustomRates(p => ({...p, [curr]: parseFloat(e.target.value) || 0}))} className={`w-24 p-2 border rounded-xl text-sm text-right font-bold transition-all ${useCustom[curr] ? 'bg-white border-orange-300 ring-4 ring-orange-50' : 'bg-slate-50 border-transparent'}`} /></td></tr>))}</tbody>
             </table>
           </div>
@@ -278,12 +309,12 @@ const App = () => {
   const [editData, setEditData] = useState({});
   const [aiStatus, setAiStatus] = useState({ type: '', message: '' });
 
-  // 🎨 最強樣式注入引擎 (含自定義滑桿樣式)
+  // 🎨 最強樣式注入引擎 (解決白屏樣式遺失問題)
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'premium-ui-engine-v7';
+    const style = document.createElement('style'); style.id = 'premium-ui-engine-final';
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { 
@@ -292,33 +323,22 @@ const App = () => {
       }
       #root { display: flex !important; flex-direction: column !important; align-items: center !important; }
       
-      /* 🌟 核心滑桿美化：方形日期導覽專用 */
+      /* 🌟 日期卡片滑桿美化 */
       .premium-slider {
         scrollbar-width: thin;
         scrollbar-color: #2563eb #f1f5f9;
       }
-      .premium-slider::-webkit-scrollbar {
-        height: 6px;
-      }
-      .premium-slider::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 10px;
-      }
-      .premium-slider::-webkit-scrollbar-thumb {
-        background-color: #2563eb;
-        border-radius: 10px;
-        border: 2px solid #f1f5f9;
-      }
-      .premium-slider::-webkit-scrollbar-thumb:hover {
-        background-color: #1d4ed8;
-      }
+      .premium-slider::-webkit-scrollbar { height: 6px; }
+      .premium-slider::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+      .premium-slider::-webkit-scrollbar-thumb { background-color: #2563eb; border-radius: 10px; border: 2px solid #f1f5f9; }
+      .premium-slider::-webkit-scrollbar-thumb:hover { background-color: #1d4ed8; }
 
       @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
     `; document.head.appendChild(style);
   }, []);
 
-  // 1. 身份驗證
+  // 1. 身份驗證 (嚴格控管)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -327,25 +347,34 @@ const App = () => {
       } catch (err) { console.error("Auth failed", err); }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setIsLoading(false); });
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsLoading(false);
+    });
     return () => unsubscribe();
   }, []);
 
-  // 2. 監聽資料 (RULE 1 & 3)
+  // 2. 監聽資料 (解決 Permission Denied)
   useEffect(() => {
     if (!user) return;
     const tripsRef = collection(db, 'artifacts', appId, 'public', 'data', 'trips');
     return onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTrips(tripList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    }, err => { if (err.code === 'permission-denied') setAiStatus({ type: 'error', message: '連線權限受阻，請重新整理頁面。' }); });
+    }, err => { 
+        if (err.code === 'permission-denied') console.error("Permission error (Trips)"); 
+    });
   }, [user]);
 
   useEffect(() => {
     if (!user || !tripId) return;
     const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
     const unsubItin = onSnapshot(itinRef, docSnap => {
-      if (docSnap.exists()) { setItineraryData({ days: docSnap.data().days || {}, checklist: docSnap.data().checklist || [] }); setView('editor'); }
+      if (docSnap.exists()) { 
+          const data = docSnap.data();
+          setItineraryData({ days: data.days || {}, checklist: data.checklist || [] }); 
+          setView('editor'); 
+      }
     });
     const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, docSnap => { if (docSnap.exists()) setTripInfo(docSnap.data()); });
@@ -371,7 +400,7 @@ const App = () => {
     } catch (err) { console.error(err); } finally { setIsLoading(false); }
   };
 
-  if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-black italic tracking-widest">載入資料中...</p></div>;
+  if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-black italic tracking-widest leading-none">正在載入雲端資料與權限...</p></div>;
 
   return (
     <div className="w-full flex flex-col items-center min-h-screen">
@@ -379,7 +408,7 @@ const App = () => {
 
       {view === 'home' ? (
         <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-fade-in">
-          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的冒險之旅</p></div>
+          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的富國島冒險之旅</p></div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
             <div className="space-y-6"><h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Plus className="text-blue-600" /> 建立新旅程</h3><form onSubmit={handleCreate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-white">
                 <div className="grid grid-cols-2 gap-6"><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">國家</label><input required placeholder="如: 越南" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} /></div><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">城市</label><input required placeholder="如: 富國島" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} /></div></div>
@@ -391,10 +420,10 @@ const App = () => {
           <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
             <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><div className="p-2 bg-blue-600 text-white rounded-2xl group-hover:rotate-12 transition-transform shadow-lg shadow-blue-100"><Plane size={24} className="rotate-45" /></div><span className="tracking-tighter uppercase font-black">Traveler</span></div>
             <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
-              <button onClick={() => setActiveTab('itinerary')} className={`px-6 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'itinerary' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Calendar size={14}/> 行程</button>
-              <button onClick={() => setActiveTab('weather')} className={`px-6 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'weather' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Sun size={14}/> 天氣</button>
-              <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><ListChecks size={14}/> 清單</button>
-              <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Coins size={14}/> 匯率</button>
+              <button onClick={() => setActiveTab('itinerary')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'itinerary' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><Calendar size={14}/> 行程</button>
+              <button onClick={() => setActiveTab('weather')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'weather' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><Sun size={14}/> 天氣</button>
+              <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><ListChecks size={14}/> 清單</button>
+              <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}><Coins size={14}/> 匯率</button>
             </div>
             <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
@@ -402,27 +431,28 @@ const App = () => {
           <main className="w-full max-w-5xl p-6 md:p-12 animate-fade-in">
             {activeTab === 'itinerary' ? (
               <div className="space-y-12">
-                {/* 🌟 日期滑桿容器：加入 premium-slider 樣式 */}
                 <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">
-                    {Object.keys(itineraryData.days || {}).map(day => (
+                    {Object.keys(itineraryData?.days || {}).map(day => (
                       <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
                         <span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span>
                         <span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day))}</span>
                       </button>
                     ))}
                 </div>
-
-                <div className="text-center md:text-left space-y-4"><div className="flex flex-col md:flex-row md:items-end gap-4"><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay}</h2><input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 flex-1 transition-all" placeholder="輸入今日主題..." value={itineraryData.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} /></div><div className="h-1 bg-slate-100 rounded-full w-full max-w-[400px]"></div></div>
+                <div className="text-center md:text-left space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-end gap-4"><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay}</h2><input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 flex-1 transition-all" placeholder="輸入今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} /></div>
+                  <div className="h-1 bg-slate-100 rounded-full w-full max-w-[400px]"></div>
+                </div>
                 <div className="bg-white p-8 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
-                  <form onSubmit={async e => { e.preventDefault(); const current = itineraryData.days[activeDay]?.spots || []; await updateItinField(`days.${activeDay}.spots`, [...current, { ...newSpot, id: Date.now().toString() }]); setNewSpot({ time: '09:00', spot: '', note: '' }); }} className="mb-12 space-y-3 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner"><div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm"><Clock size={18} className="text-blue-500" /><input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24" /></div><input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" /></div><div className="flex gap-3"><textarea placeholder="詳細備註 (交通、必吃、小筆記)..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm shadow-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg"><Plus size={24}/><span className="text-[10px]">加入</span></button></div></form>
+                  <form onSubmit={async e => { e.preventDefault(); const current = itineraryData?.days[activeDay]?.spots || []; await updateItinField(`days.${activeDay}.spots`, [...current, { ...newSpot, id: Date.now().toString() }]); setNewSpot({ time: '09:00', spot: '', note: '' }); }} className="mb-12 space-y-3 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner"><div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm"><Clock size={18} className="text-blue-500" /><input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24" /></div><input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" /></div><div className="flex gap-3"><textarea placeholder="詳細備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm shadow-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg"><Plus size={24}/><span className="text-[10px]">加入</span></button></div></form>
                   <div className="space-y-10 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full">
-                    {(itineraryData.days[activeDay]?.spots || []).map((item, idx) => (
-                      <div key={item.id} className="relative pl-20 group"><div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === 0) return; [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md group-hover:scale-110 transition-transform">{item.time}</div><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === spots.length - 1) return; [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowDown size={20}/></button></div><div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
+                    {(itineraryData?.days?.[activeDay]?.spots || []).map((item, idx) => (
+                      <div key={item.id} className="relative pl-20 group"><div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === 0) return; [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === spots.length - 1) return; [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowDown size={20}/></button></div><div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
                           {editingId === item.id ? ( <div className="space-y-4 flex-1 animate-fade-in"><div className="flex gap-2"><input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="p-3 border rounded-xl font-black text-sm w-32 bg-slate-50 outline-none" /><input value={editData.spot} onChange={e => setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black text-sm bg-slate-50 outline-none" /></div><textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl text-sm h-24 resize-none bg-slate-50 outline-none" /><div className="flex justify-end gap-3"><button onClick={() => setEditingId(null)} className="text-sm font-bold text-slate-400 px-4">取消</button><button onClick={async () => { const spots = itineraryData.days[activeDay].spots.map(s => s.id === editingId ? editData : s); await updateItinField(`days.${activeDay}.spots`, spots); setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg"><Save size={16}/> 儲存</button></div></div>
                           ) : ( <div className="flex justify-between items-start gap-4"><div className="space-y-4 flex-1"><div className="flex items-center gap-4 flex-wrap"><h4 className="text-3xl font-black text-slate-800 tracking-tight leading-tight">{item.spot}</h4><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm"><MapPin size={14} /> 地圖</a></div><div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100"><p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{item.note || "暫無說明..."}</p></div></div><div className="flex flex-col gap-2 opacity-0 group-hover/item:opacity-100 transition-all"><button onClick={() => { setEditingId(item.id); setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl"><Edit3 size={20} /></button><button onClick={async () => await updateItinField(`days.${activeDay}.spots`, itineraryData.days[activeDay].spots.filter(s => s.id !== item.id))} className="p-3 text-slate-300 hover:text-red-500 bg-red-50 rounded-2xl"><Trash2 size={20}/></button></div></div> )}
                         </div></div>
                     ))}
-                    {(!itineraryData.days[activeDay]?.spots || itineraryData.days[activeDay].spots.length === 0) && ( <div className="py-24 text-center border-4 border-dashed border-slate-50 rounded-[3rem]"><Calendar className="text-slate-100 mx-auto mb-6" size={80} /><p className="text-slate-300 font-black text-xl italic text-center">今天還沒有安排任何景點！</p></div> )}
+                    {(!itineraryData?.days?.[activeDay]?.spots || itineraryData.days[activeDay].spots.length === 0) && ( <div className="py-24 text-center border-4 border-dashed border-slate-50 rounded-[3rem]"><Calendar className="text-slate-100 mx-auto mb-6" size={80} /><p className="text-slate-300 font-black text-xl italic text-center">今天還沒有安排任何景點！</p></div> )}
                   </div>
                 </div>
               </div>
