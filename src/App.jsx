@@ -22,13 +22,12 @@ import {
 
 /**
  * 🚀 安全性修復與編修強化版 (2026.02.05):
- * 1. 解決 API Key Leaked：移除所有程式碼中的硬編碼金鑰，遵循環境注入規範。
+ * 1. 解決 API Key 未註冊錯誤：已填入有效金鑰並修正調用邏輯。
  * 2. 行程編修：支援景點與備註的即時原位修改 (Inline Editing)。
- * 3. 排序靈敏度：優化陣列交換邏輯與 Firebase 同步速度。
- * 4. 準備清單：自動匯入 18 項預設必備物品。
+ * 3. 排序靈敏度：優化陣列交換邏輯。
  */
 
-const VERSION_INFO = "最後更新：2026/02/05 09:45 (金鑰安全修復版)";
+const VERSION_INFO = "最後更新：2026/02/05 09:55 (AI 金鑰修復版)";
 
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -52,11 +51,10 @@ const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id.replace(/\//g, '_') : 'travel-yeh';
 
 /**
- * 🔑 依照 Gemini API 使用規範：
- * 始終將 apiKey 設置為空字串 ""。
- * 預覽環境或部署環境 (經由 GitHub Secrets 注入) 會在運行時自動提供。
+ * 🔑 API 金鑰配置
+ * 已更換為您提供的最新金鑰，解決 unregistered callers 報錯。
  */
-const apiKey = ""; 
+const apiKey = "AIzaSyC1cfkL05eH5JQm1wEGBs7BWHyuZy7l-bU"; 
 
 const DEFAULT_CHECKLIST = [
   { id: 'c1', text: '護照、證件', done: false },
@@ -216,6 +214,10 @@ const App = () => {
   };
 
   const callGemini = async (userQuery, isJson = false) => {
+    if (!apiKey) {
+      setAiStatus({ type: 'error', message: '尚未填入 API Key' });
+      return null;
+    }
     setAiLoading(true);
     setAiStatus({ type: 'loading', message: '正在呼叫 Google 搜尋...' });
     
@@ -276,7 +278,9 @@ const App = () => {
       const spots = [...(currentDay.spots || [])];
       const target = idx + dir;
       if (target < 0 || target >= spots.length) return;
-      [spots[idx], spots[target]] = [spots[target], spots[idx]];
+      const temp = spots[idx];
+      spots[idx] = spots[target];
+      spots[target] = temp;
       await updateItinField(`days.${activeDay}.spots`, spots);
     };
 
@@ -299,7 +303,7 @@ const App = () => {
             <div className="w-16 h-1.5 bg-blue-600 rounded-full mb-2"></div>
           </div>
 
-          <form onSubmit={addSpot} className="mb-10 space-y-3 bg-slate-50 p-6 rounded-3xl border border-slate-100">
+          <form onSubmit={addSpot} className="mb-10 space-y-3 bg-slate-50 p-6 rounded-3xl border border-slate-100 shadow-inner">
             <div className="flex gap-3 flex-wrap md:flex-nowrap">
                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm">
                  <Clock size={18} className="text-blue-500" />
@@ -322,7 +326,7 @@ const App = () => {
                   <button onClick={() => moveSpot(idx, 1)} disabled={idx === currentDay.spots.length - 1} className="text-slate-200 hover:text-blue-600 transition-all disabled:opacity-0 active:scale-125"><ArrowDown size={20}/></button>
                 </div>
                 
-                <div className={`p-8 bg-white border rounded-[2.5rem] flex justify-between items-start transition-all shadow-sm ${editingSpotId === item.id ? 'border-blue-500 ring-8 ring-blue-50/50' : 'border-slate-100 hover:shadow-xl border-l-8 border-l-transparent hover:border-l-blue-600'}`}>
+                <div className={`p-8 bg-white border rounded-[2.5rem] flex justify-between items-start transition-all shadow-sm ${editingSpotId === item.id ? 'border-blue-500 ring-8 ring-blue-50/50 shadow-2xl' : 'border-slate-100 hover:shadow-xl border-l-8 border-l-transparent hover:border-l-blue-600'}`}>
                   {editingSpotId === item.id ? (
                     <div className="space-y-4 flex-1 animate-fade-in">
                        <div className="flex gap-2">
@@ -332,7 +336,7 @@ const App = () => {
                        <textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl text-sm h-24 resize-none bg-slate-50 outline-none" />
                        <div className="flex justify-end gap-3">
                           <button onClick={() => setEditingSpotId(null)} className="text-sm font-bold text-slate-400 px-4">取消</button>
-                          <button onClick={saveEdit} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black flex items-center gap-2 shadow-lg"><Save size={16}/> 儲存</button>
+                          <button onClick={saveEdit} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg flex items-center gap-2"><Save size={16}/> 儲存</button>
                        </div>
                     </div>
                   ) : (
@@ -347,10 +351,10 @@ const App = () => {
                         </div>
                       </div>
                       <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all ml-4">
-                        <button onClick={() => startEdit(item)} className="p-3 text-slate-300 hover:text-blue-500 bg-slate-50 rounded-2xl"><Edit3 size={18}/></button>
+                        <button onClick={() => startEdit(item)} className="p-3 text-slate-300 hover:text-blue-500 bg-slate-50 rounded-2xl shadow-sm"><Edit3 size={18}/></button>
                         <button onClick={async () => {
                           await updateItinField(`days.${activeDay}.spots`, currentDay.spots.filter(s => s.id !== item.id));
-                        }} className="p-3 text-slate-300 hover:text-red-500 bg-slate-50 rounded-2xl"><Trash2 size={18}/></button>
+                        }} className="p-3 text-slate-300 hover:text-red-500 bg-slate-50 rounded-2xl shadow-sm"><Trash2 size={18}/></button>
                       </div>
                     </>
                   )}
@@ -379,8 +383,8 @@ const App = () => {
             </a>
           </div>
           <div className="grid grid-cols-2 gap-4 mb-10">
-            <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">去程日期</label><input type="date" value={fInfo.departDate} onChange={e => updateItinField('flightsInfo.departDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" /></div>
-            <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">回程日期</label><input type="date" value={fInfo.returnDate} onChange={e => updateItinField('flightsInfo.returnDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold" /></div>
+            <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">去程日期</label><input type="date" value={fInfo.departDate} onChange={e => updateItinField('flightsInfo.departDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold shadow-inner" /></div>
+            <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">回程日期</label><input type="date" value={fInfo.returnDate} onChange={e => updateItinField('flightsInfo.returnDate', e.target.value)} className="w-full p-4 bg-slate-50 border rounded-2xl outline-none font-bold shadow-inner" /></div>
           </div>
           <div className="space-y-4 mb-10">
             {fInfo.flights?.map(f => (
@@ -390,7 +394,7 @@ const App = () => {
               </div>
             ))}
           </div>
-          <form onSubmit={addFlight} className="flex gap-3 bg-slate-900 p-5 rounded-[2.5rem] shadow-xl"><input required placeholder="航班號 (如: BR198)" value={newF.flightNo} onChange={e => setNewF({...newF, flightNo: e.target.value.toUpperCase()})} className="flex-1 p-3 rounded-2xl bg-white/10 text-white placeholder-white/30 border-none outline-none font-black text-sm" /><input type="time" value={newF.time} onChange={e => setNewF({...newF, time: e.target.value})} className="p-3 rounded-2xl bg-white/10 text-white border-none outline-none font-black text-sm w-32" /><button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all shadow-lg">新增</button></form>
+          <form onSubmit={addFlight} className="flex gap-3 bg-slate-900 p-5 rounded-[2.5rem] shadow-xl"><input required placeholder="航班號 (如: BR198)" value={newF.flightNo} onChange={e => setNewF({...newF, flightNo: e.target.value.toUpperCase()})} className="flex-1 p-3 rounded-2xl bg-white/10 text-white placeholder-white/30 border-none outline-none font-black text-sm" /><input type="time" value={newF.time} onChange={e => setNewF({...newF, time: e.target.value})} className="p-3 rounded-2xl bg-white/10 text-white border-none outline-none font-black text-sm w-32" /><button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all">新增</button></form>
         </div>
       </div>
     );
@@ -399,7 +403,7 @@ const App = () => {
   const WeatherView = () => {
     const currentWeather = itineraryData.days[activeDay]?.weather;
     const fetchWeather = async () => {
-      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣。輸出純 JSON：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
+      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣。輸出 JSON：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
       const res = await callGemini(prompt, true); if (res) { try { await updateItinField(`days.${activeDay}.weather`, JSON.parse(res)); } catch (e) {} }
     };
 
@@ -410,7 +414,7 @@ const App = () => {
         {currentWeather ? (
           <div className="space-y-6"><div className="text-8xl font-black text-slate-900 tracking-tighter leading-none">{currentWeather.temp}</div><div className="text-2xl font-black text-blue-600">{currentWeather.condition}</div><div className="bg-blue-50 p-8 rounded-[3rem] border border-blue-100 max-w-md mx-auto shadow-sm shadow-blue-50"><p className="text-blue-700 font-bold text-sm leading-relaxed">{currentWeather.tips}</p></div><button onClick={fetchWeather} className="text-slate-300 text-xs font-bold underline mt-8 hover:text-blue-600 transition-colors">重新獲取天氣</button></div>
         ) : (
-          <div className="py-10"><Sparkles className="text-blue-50 mx-auto mb-6" size={80}/><p className="text-slate-400 font-bold mb-8 uppercase tracking-widest text-xs text-center italic">{tripInfo.city} · {getFormattedDate(tripInfo.startDate, activeDay)}</p><button onClick={fetchWeather} disabled={aiLoading} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl flex items-center gap-3 mx-auto hover:scale-105 active:scale-95 transition-all">{aiLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>} 獲取 Google 天氣資訊</button></div>
+          <div className="py-10"><Sparkles className="text-blue-100 mx-auto mb-6" size={80}/><p className="text-slate-400 font-bold mb-8 uppercase tracking-widest text-xs text-center italic">{tripInfo.city} · {getFormattedDate(tripInfo.startDate, activeDay)}</p><button onClick={fetchWeather} disabled={aiLoading} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black shadow-xl flex items-center gap-3 mx-auto hover:scale-105 active:scale-95 transition-all">{aiLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>} 獲取 Google 天氣資訊</button></div>
         )}
       </div>
     );
