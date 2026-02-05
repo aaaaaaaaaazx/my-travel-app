@@ -21,14 +21,14 @@ import {
 } from 'lucide-react';
 
 /**
- * 🚀 介面美化修復版 (2026.02.05):
- * 1. 樣式修復：重新加入 Tailwind CDN 自動注入，解決白屏/無美化問題。
- * 2. AI 整合：已填入您的 Gemini 金鑰，支援天氣、航班、匯率 AI 查詢。
- * 3. 排序靈敏度：優化行程卡片移動邏輯。
- * 4. 多分頁系統：旅行、航班、天氣、清單、匯率五大功能。
+ * 🚀 全功能整合修復版 (2026.02.05):
+ * 1. AI 引擎優化：遵循系統規範將 apiKey 設為 ""，由環境自動注入。
+ * 2. 搜尋穩定化：優化 Payload 結構與 Google Search 工具配置。
+ * 3. 排序靈敏度：極速同步排序邏輯。
+ * 4. 狀態回饋：加入 aiStatus 以即時顯示 AI 執行進度與報錯。
  */
 
-const VERSION_INFO = "最後更新：2026/02/05 07:50 (樣式引擎修復版)";
+const VERSION_INFO = "最後更新：2026/02/05 08:15 (Google 搜尋修復版)";
 
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -51,8 +51,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id.replace(/\//g, '_') : 'travel-yeh';
 
-// 🔑 已更新為您提供的 Gemini API Key
-const apiKey = "AIzaSyAJonoRzATBWnDzKwzRe-Vg2Knmb55uv1Q"; 
+/**
+ * 💡 重要提示：依照環境規範，apiKey 必須保持為空字串 ""。
+ * 執行環境會自動將您的 API 金鑰注入。
+ */
+const apiKey = ""; 
 
 const DEFAULT_CHECKLIST = [
   { id: 'c1', text: '護照、證件', done: false },
@@ -85,48 +88,22 @@ const App = () => {
   const [activeDay, setActiveDay] = useState(1);
   const [tripInfo, setTripInfo] = useState({ country: '', city: '', startDate: '', duration: 3 });
   const [itineraryData, setItineraryData] = useState({ days: {}, checklist: [], currencyInfo: null, flightsInfo: { departDate: '', returnDate: '', flights: [] } });
+  
+  // AI 呼叫狀態管理
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiStatus, setAiStatus] = useState({ type: '', message: '' });
 
-  // 🛠 強力重設與樣式美化注入
-  useEffect(() => {
-    // 注入 Tailwind CSS 引擎
-    if (!document.getElementById('tailwind-cdn')) {
-      const script = document.createElement('script');
-      script.id = 'tailwind-cdn';
-      script.src = 'https://cdn.tailwindcss.com';
-      document.head.appendChild(script);
-    }
-    
-    // 強制重設全螢幕置中樣式
-    const style = document.createElement('style');
-    style.innerHTML = `
-      html, body, #root { 
-        min-height: 100% !important; 
-        width: 100% !important; 
-        margin: 0 !important; 
-        padding: 0 !important; 
-        background-color: #f8fafc; /* slate-50 */
-      }
-      #root { 
-        display: flex !important; 
-        flex-direction: column !important; 
-        align-items: center !important; 
-      }
-      .scrollbar-hide::-webkit-scrollbar { display: none; }
-      @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
-    `;
-    document.head.appendChild(style);
-  }, []);
-
-  // 指數退避重試
+  // 指數退避重試函數
   const fetchWithRetry = async (url, options, retries = 5, delay = 1000) => {
     try {
       const response = await fetch(url, options);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
       return await response.json();
     } catch (err) {
-      if (retries > 0) {
+      if (retries > 0 && !err.message.includes("403") && !err.message.includes("401")) {
         await new Promise(r => setTimeout(r, delay));
         return fetchWithRetry(url, options, retries - 1, delay * 2);
       }
@@ -138,6 +115,23 @@ const App = () => {
     if (!text) return null;
     return text.replace(/```json/g, '').replace(/```/g, '').trim();
   };
+
+  useEffect(() => {
+    if (!document.getElementById('tailwind-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com';
+      document.head.appendChild(script);
+    }
+    const style = document.createElement('style');
+    style.innerHTML = `
+      html, body, #root { min-height: 100% !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background-color: #f8fafc; }
+      #root { display: flex !important; flex-direction: column !important; align-items: center !important; }
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -220,25 +214,46 @@ const App = () => {
     } finally { setIsLoading(false); }
   };
 
-  const callGemini = async (prompt, isJson = false) => {
+  // --- 核心 AI 處理邏輯 (Grounding 修復版) ---
+  const callGemini = async (userQuery, isJson = false) => {
     setAiLoading(true);
+    setAiStatus({ type: 'loading', message: '正在呼叫 Google 搜尋獲取最新數據...' });
+    
     try {
-      const body = { 
-        contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ "google_search": {} }]
+      const systemPrompt = isJson 
+        ? "You are a precise travel data analyst. Your output MUST be valid JSON only, without any markdown formatting or explanation."
+        : "You are a travel assistant helpful in explaining data retrieved from search.";
+
+      const payload = { 
+        contents: [{ parts: [{ text: userQuery }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        tools: [{ "google_search": {} }],
+        generationConfig: isJson ? { responseMimeType: "application/json" } : {}
       };
-      if (isJson) body.generationConfig = { responseMimeType: "application/json" };
+      
       const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(payload)
       });
+      
       let text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      setAiStatus({ type: 'success', message: '查詢成功！' });
+      
+      // 清除成功訊息
+      setTimeout(() => setAiStatus({ type: '', message: '' }), 3000);
+      
       return isJson ? cleanJsonResponse(text) : text;
-    } catch (e) { console.error("AI failed", e); return null; } finally { setAiLoading(false); }
+    } catch (e) {
+      console.error("Gemini 錯誤:", e);
+      setAiStatus({ type: 'error', message: `查詢失敗: ${e.message}` });
+      return null;
+    } finally {
+      setAiLoading(false);
+    }
   };
 
-  // --- 視圖內容 ---
+  // --- 分頁組件 ---
 
   const ItineraryView = () => {
     const [newSpot, setNewSpot] = useState({ time: '09:00', spot: '', note: '' });
@@ -274,7 +289,7 @@ const App = () => {
         <div className="bg-white p-8 md:p-12 rounded-[3.5rem] shadow-sm border border-slate-100">
           <div className="flex justify-between items-end mb-10">
             <div>
-               <h2 className="text-5xl font-black text-slate-900 italic tracking-tighter">Day {activeDay}</h2>
+               <h2 className="text-5xl font-black text-slate-900 italic tracking-tighter leading-none">Day {activeDay}</h2>
                <p className="text-slate-400 font-bold uppercase text-[10px] mt-2 tracking-widest">{getFormattedDate(tripInfo.startDate, activeDay)}</p>
             </div>
             <div className="w-16 h-1.5 bg-blue-600 rounded-full mb-2"></div>
@@ -391,7 +406,7 @@ const App = () => {
           <form onSubmit={addFlight} className="flex gap-3 bg-slate-900 p-5 rounded-[2.5rem] shadow-xl">
              <input required placeholder="航班號 (如: BR198)" value={newF.flightNo} onChange={e => setNewF({...newF, flightNo: e.target.value.toUpperCase()})} className="flex-1 p-3 rounded-2xl bg-white/10 text-white placeholder-white/30 border-none outline-none font-black text-sm" />
              <input type="time" value={newF.time} onChange={e => setNewF({...newF, time: e.target.value})} className="p-3 rounded-2xl bg-white/10 text-white border-none outline-none font-black text-sm w-32" />
-             <button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all shadow-lg shrink-0">新增</button>
+             <button type="submit" className="bg-blue-600 text-white px-8 rounded-2xl font-black hover:bg-blue-500 active:scale-95 transition-all">新增</button>
           </form>
         </div>
       </div>
@@ -401,7 +416,7 @@ const App = () => {
   const WeatherView = () => {
     const currentWeather = itineraryData.days[activeDay]?.weather;
     const fetchWeather = async () => {
-      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣。輸出純 JSON：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
+      const prompt = `利用 Google 搜尋查出「${tripInfo.city}」在「${getFormattedDate(tripInfo.startDate, activeDay)}」的天氣。必須輸出純 JSON：{"temp": "氣溫", "condition": "狀態", "tips": "建議"}`;
       const res = await callGemini(prompt, true);
       if (res) {
         try { const data = JSON.parse(res); await updateItinField(`days.${activeDay}.weather`, data); } catch (e) {}
@@ -523,121 +538,135 @@ const App = () => {
     );
   }
 
-  if (view === 'home') {
-    return (
-      <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-fade-in">
-        <div className="text-center mb-16">
-          <div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0">
-            <Plane size={48} />
-          </div>
-          <h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1>
-          <p className="text-slate-400 font-bold tracking-widest uppercase text-sm italic">為您的旅程注入 AI 靈魂</p>
+  return (
+    <div className="w-full flex flex-col items-center min-h-screen">
+      {/* 全域 AI 狀態列 */}
+      {aiStatus.message && (
+        <div className={`fixed top-4 z-[200] px-6 py-3 rounded-2xl shadow-2xl animate-fade-in flex items-center gap-3 border ${
+          aiStatus.type === 'error' ? 'bg-red-50 border-red-100 text-red-600' : 
+          aiStatus.type === 'success' ? 'bg-green-50 border-green-100 text-green-600' : 
+          'bg-white border-blue-100 text-blue-600'
+        }`}>
+          {aiStatus.type === 'loading' ? <Loader2 className="animate-spin" size={18}/> : 
+           aiStatus.type === 'error' ? <AlertCircle size={18}/> : <CheckCircle size={18}/>}
+          <span className="font-bold text-sm">{aiStatus.message}</span>
+          <button onClick={() => setAiStatus({ type: '', message: '' })}><X size={14}/></button>
         </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
-          <div className="space-y-6">
-            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Plus className="text-blue-600" /> 建立新旅程</h3>
-            <form onSubmit={handleCreate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-slate-100">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">國家</label>
-                  <input required placeholder="如: 日本" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">城市</label>
-                  <input required placeholder="如: 東京" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">出發日期</label>
-                  <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">天數</label>
-                  <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
-                </div>
-              </div>
-              <button disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl shadow-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
-                {isLoading ? <Loader2 className="animate-spin" size={24}/> : <><Plus size={24}/> 開始規劃旅程</>}
-              </button>
-            </form>
-          </div>
+      )}
 
-          <div className="space-y-6">
-            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Calendar className="text-blue-600" /> 我的旅程清單 ({trips.length})</h3>
-            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 scrollbar-hide">
-              {trips.map((trip) => (
-                <div key={trip.id} onClick={() => setTripId(trip.id)} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex items-center justify-between">
-                  <div className="flex items-center gap-5">
-                    <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                      <Globe size={24} />
-                    </div>
-                    <div>
-                      <h4 className="text-xl font-black text-slate-800 tracking-tight">{trip.city} 之旅</h4>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{trip.country} · {trip.startDate}</p>
-                    </div>
+      {view === 'home' ? (
+        <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-fade-in">
+          <div className="text-center mb-16">
+            <div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0">
+              <Plane size={48} />
+            </div>
+            <h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1>
+            <p className="text-slate-400 font-bold tracking-widest uppercase text-sm italic">為您的旅程注入 AI 靈魂</p>
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
+            <div className="space-y-6">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Plus className="text-blue-600" /> 建立新旅程</h3>
+              <form onSubmit={handleCreate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-slate-100">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">國家</label>
+                    <input required placeholder="如: 日本" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} />
                   </div>
-                  <ChevronRight className="text-slate-200 group-hover:text-blue-600 transition-colors" />
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">城市</label>
+                    <input required placeholder="如: 東京" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} />
+                  </div>
                 </div>
-              ))}
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">出發日期</label>
+                    <input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">天數</label>
+                    <input required type="number" min="1" max="14" placeholder="天數" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} />
+                  </div>
+                </div>
+                <button disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl shadow-blue-100 transition-all active:scale-95 flex items-center justify-center gap-2">
+                  {isLoading ? <Loader2 className="animate-spin" size={24}/> : <><Plus size={24}/> 開始規劃旅程</>}
+                </button>
+              </form>
+            </div>
+
+            <div className="space-y-6">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Calendar className="text-blue-600" /> 我的旅程清單 ({trips.length})</h3>
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 scrollbar-hide">
+                {trips.map((trip) => (
+                  <div key={trip.id} onClick={() => setTripId(trip.id)} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group flex items-center justify-between">
+                    <div className="flex items-center gap-5">
+                      <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        <Globe size={24} />
+                      </div>
+                      <div>
+                        <h4 className="text-xl font-black text-slate-800 tracking-tight">{trip.city} 之旅</h4>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{trip.country} · {trip.startDate}</p>
+                      </div>
+                    </div>
+                    <ChevronRight className="text-slate-200 group-hover:text-blue-600 transition-colors" />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
+          <div className="mt-12 text-slate-300 text-[10px] font-bold uppercase tracking-widest">{VERSION_INFO}</div>
         </div>
-        <div className="mt-12 text-slate-300 text-[10px] font-bold uppercase tracking-widest">{VERSION_INFO}</div>
-      </div>
-    );
-  }
+      ) : (
+        <div className="w-full flex flex-col items-center pb-24 min-h-screen">
+          <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
+            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}>
+              <div className="p-2 bg-blue-600 text-white rounded-2xl group-hover:rotate-12 transition-transform shadow-lg shadow-blue-100">
+                <Plane size={24} className="rotate-45" />
+              </div>
+              <span className="tracking-tighter uppercase font-black">Traveler</span>
+            </div>
+            <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
+              {[
+                { id: 'itinerary', icon: Calendar, label: '行程' },
+                { id: 'flight', icon: PlaneTakeoff, label: '航班' },
+                { id: 'weather', icon: Sun, label: '天氣' },
+                { id: 'checklist', icon: ListChecks, label: '清單' },
+                { id: 'currency', icon: Coins, label: '匯率' }
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                  <tab.icon size={14} /> {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-right">
+              <div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div>
+              <div className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div>
+            </div>
+          </nav>
 
-  return (
-    <div className="w-full flex flex-col items-center pb-24 min-h-screen">
-      <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
-        <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}>
-          <div className="p-2 bg-blue-600 text-white rounded-2xl group-hover:rotate-12 transition-transform shadow-lg shadow-blue-100">
-            <Plane size={24} className="rotate-45" />
+          <div className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl rounded-[2.5rem] p-3 flex justify-around items-center z-[100] shadow-2xl">
+             {[
+               { id: 'itinerary', icon: Calendar },
+               { id: 'flight', icon: PlaneTakeoff },
+               { id: 'weather', icon: Sun },
+               { id: 'checklist', icon: ListChecks },
+               { id: 'currency', icon: Coins }
+             ].map(tab => (
+               <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`p-4 rounded-2xl transition-all ${activeTab === tab.id ? 'bg-blue-600 text-white scale-110 shadow-lg' : 'text-slate-500'}`}>
+                 <tab.icon size={20} />
+               </button>
+             ))}
           </div>
-          <span className="tracking-tighter uppercase font-black">Traveler</span>
+          
+          <main className="w-full p-6 md:p-12">
+            {activeTab === 'itinerary' && <ItineraryView />}
+            {activeTab === 'flight' && <FlightView />}
+            {activeTab === 'weather' && <WeatherView />}
+            {activeTab === 'checklist' && <ChecklistView />}
+            {activeTab === 'currency' && <CurrencyView />}
+          </main>
         </div>
-        <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
-          {[
-            { id: 'itinerary', icon: Calendar, label: '行程' },
-            { id: 'flight', icon: PlaneTakeoff, label: '航班' },
-            { id: 'weather', icon: Sun, label: '天氣' },
-            { id: 'checklist', icon: ListChecks, label: '清單' },
-            { id: 'currency', icon: Coins, label: '匯率' }
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
-              <tab.icon size={14} /> {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="text-right">
-          <div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div>
-          <div className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div>
-        </div>
-      </nav>
-
-      <div className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl rounded-[2.5rem] p-3 flex justify-around items-center z-[100] shadow-2xl">
-         {[
-           { id: 'itinerary', icon: Calendar },
-           { id: 'flight', icon: PlaneTakeoff },
-           { id: 'weather', icon: Sun },
-           { id: 'checklist', icon: ListChecks },
-           { id: 'currency', icon: Coins }
-         ].map(tab => (
-           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`p-4 rounded-2xl transition-all ${activeTab === tab.id ? 'bg-blue-600 text-white scale-110 shadow-lg' : 'text-slate-500'}`}>
-             <tab.icon size={20} />
-           </button>
-         ))}
-      </div>
-      
-      <main className="w-full p-6 md:p-12">
-        {activeTab === 'itinerary' && <ItineraryView />}
-        {activeTab === 'flight' && <FlightView />}
-        {activeTab === 'weather' && <WeatherView />}
-        {activeTab === 'checklist' && <ChecklistView />}
-        {activeTab === 'currency' && <CurrencyView />}
-      </main>
+      )}
     </div>
   );
 };
