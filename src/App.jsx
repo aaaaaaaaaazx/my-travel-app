@@ -21,23 +21,23 @@ import {
   ArrowUp, ArrowDown, Edit3, Save, MapPin, Map as MapIcon,
   ArrowLeftRight, Settings2, RotateCcw, TrendingUp, DollarSign, CheckCircle2, Search, Circle, Coins, ListChecks,
   Sun, Cloud, CloudRain, CloudLightning, Snowflake, Smartphone, Shirt, Bath, Pill, FileText, Package,
-  Calculator, Equal
+  Calculator, Equal, ArrowLeft, ArrowRight
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 標題強化：Day 標題與導覽列同步顯示日期與星期幾。
- * 2. 專屬標記：首頁歡迎語加入「彥麟製作」。
- * 3. 計算機優化：運算精度維持小數點後 8 位數，支援高精度試算。
- * 4. 完整計算機：匯率頁面下方配置完整實體計算機，支援一鍵套用。
- * 5. 天氣優化：結束日期自動預設為旅程最後一天。
- * 6. 匯率選單優化：來源與目標幣別均加入國家中文名稱。
+ * 1. 日期調整：加入整天行程移動功能 (往前/往後移)，支援快速調換日期順序。
+ * 2. 標題強化：Day 標題與導覽列同步顯示日期與星期幾。
+ * 3. 專屬標記：首頁歡迎語加入「彥麟製作」。
+ * 4. 計算機優化：運算精度維持小數點後 8 位數，支援高精度試算。
+ * 5. 完整計算機：匯率頁面下方配置完整實體計算機，支援一鍵套用。
+ * 6. 天氣優化：結束日期自動預設為旅程最後一天。
  */
 
-const VERSION_INFO = "穩定版 V1.8 - 2026/02/06 11:55";
+const VERSION_INFO = "穩定版 V1.9 - 2026/02/06 12:01";
 
-// --- 精簡後的主要國家資料 ---
+// --- 靜態配置與資料對照 ---
 const currencyNames = {
   "TWD": "台灣 - 台幣",
   "USD": "美國 - 美金",
@@ -87,10 +87,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// 💡 權限關鍵：必須嚴格符合 Segment 規範，固定為 travel-yeh 以找回資料
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
 const appId = rawAppId.replace(/\//g, '_');
-const apiKey = ""; // 執行環境自動注入
+const apiKey = ""; 
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
@@ -536,6 +535,29 @@ const App = () => {
     setTripInfo({ country: trip.country, city: trip.city, startDate: trip.startDate, duration: trip.duration });
   };
 
+  // 🌟 移動整天行程的邏輯
+  const moveDay = async (direction) => {
+    if (!user || !tripId || !db) return;
+    const days = { ...itineraryData.days };
+    const targetDay = activeDay + direction;
+    const totalDays = parseInt(tripInfo.duration);
+
+    if (targetDay < 1 || targetDay > totalDays) return;
+
+    // 交換兩天的資料
+    const currentData = days[activeDay];
+    const targetData = days[targetDay];
+
+    days[activeDay] = targetData;
+    days[targetDay] = currentData;
+
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), { days });
+      setActiveDay(targetDay); // 移動後視角切換到目標日期
+      setAiStatus({ type: 'success', message: `已將 Day ${activeDay} 與 Day ${targetDay} 對調` });
+    } catch (err) { console.error("Move day failed", err); }
+  };
+
   if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-black italic tracking-widest leading-none">同步雲端資料中...</p></div>;
 
   return (
@@ -588,11 +610,25 @@ const App = () => {
                     ))}
                 </div>
                 <div className="text-center md:text-left space-y-4">
-                  <div className="flex flex-col md:flex-row md:items-end gap-4"><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay} <span className="text-2xl not-italic ml-2 text-slate-400 font-bold">({getFormattedDate(tripInfo.startDate, activeDay)} {getDayOfWeek(tripInfo.startDate, activeDay)})</span></h2><input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 flex-1 transition-all" placeholder="輸入今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} /></div>
+                  <div className="flex flex-col md:flex-row md:items-end gap-4">
+                    <div className="flex items-center gap-4">
+                      <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay}</h2>
+                      {/* 🌟 整天行程移動按鈕 */}
+                      <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200">
+                        <button onClick={() => moveDay(-1)} disabled={activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors" title="整天往後移 (與前一天對調)"><ArrowLeft size={20}/></button>
+                        <div className="w-px h-6 bg-slate-200 my-auto"></div>
+                        <button onClick={() => moveDay(1)} disabled={activeDay === parseInt(tripInfo.duration)} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors" title="整天往前移 (與後一天對調)"><ArrowRight size={20}/></button>
+                      </div>
+                    </div>
+                    <div className="flex-1 flex flex-col">
+                      <span className="text-lg text-slate-400 font-bold ml-1 mb-1">({getFormattedDate(tripInfo.startDate, activeDay)} {getDayOfWeek(tripInfo.startDate, activeDay)})</span>
+                      <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 transition-all w-full" placeholder="輸入今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} />
+                    </div>
+                  </div>
                   <div className="h-1 bg-slate-100 rounded-full w-full max-w-[400px]"></div>
                 </div>
                 <div className="bg-white p-8 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
-                  <form onSubmit={async e => { e.preventDefault(); const current = itineraryData?.days?.[activeDay]?.spots || []; await updateItinField(`days.${activeDay}.spots`, [...current, { ...newSpot, id: Date.now().toString() }]); setNewSpot({ time: '09:00', spot: '', note: '' }); }} className="mb-12 space-y-3 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner"><div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm"><Clock size={18} className="text-blue-500" /><input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 shadow-none" /></div><input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" /></div><div className="flex gap-3"><textarea placeholder="詳細備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none bg-white outline-none shadow-sm text-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg"><Plus size={24}/><span className="text-[10px]">加入</span></button></div></form>
+                  <form onSubmit={async e => { e.preventDefault(); const current = itineraryData?.days?.[activeDay]?.spots || []; await updateItinField(`days.${activeDay}.spots`, [...current, { ...newSpot, id: Date.now().toString() }]); setNewSpot({ time: '09:00', spot: '', note: '' }); }} className="mb-12 space-y-3 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner"><div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm"><Clock size={18} className="text-blue-500" /><input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 shadow-none" /></div><input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" /></div><div className="flex gap-3"><textarea placeholder="詳細備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none bg-white outline-none shadow-sm text-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg"><Plus size={28}/><span className="text-[10px]">加入</span></button></div></form>
                   <div className="space-y-10 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full">
                     {(itineraryData?.days?.[activeDay]?.spots || []).map((item, idx) => (
                       <div key={item.id} className="relative pl-20 group"><div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === 0) return; [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === spots.length - 1) return; [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowDown size={20}/></button></div><div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
