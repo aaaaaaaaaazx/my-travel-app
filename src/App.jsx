@@ -21,20 +21,21 @@ import {
   ArrowUp, ArrowDown, Edit3, Save, MapPin, Map as MapIcon,
   ArrowLeftRight, Settings2, RotateCcw, TrendingUp, DollarSign, CheckCircle2, Search, Circle, Coins, ListChecks,
   Sun, Cloud, CloudRain, CloudLightning, Snowflake, Smartphone, Shirt, Bath, Pill, FileText, Package,
-  Calculator, Equal, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, StickyNote, Eye, EyeOff
+  Calculator, Equal, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, StickyNote, Eye, EyeOff,
+  Sparkles
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準穩定版 (2026.02.07)
  * ------------------------------------------------
- * 1. 穩定性修復：修正重複匯入 ArrowRight 與遺失圖示導致的編譯失敗。
- * 2. 權限修復：嚴格遵循 Rule 3，確保先 Auth 後監聽，解決 Permission Denied。
- * 3. 介面恢復：恢復首頁下方的 VERSION_INFO 資訊。
- * 4. 備註摺疊：預設隱藏行程備註，支援單獨點擊展開。
- * 5. 計算機：運算精度維持小數點後 8 位數。
+ * 1. 穩定性修復：解決初始化 Firebase 或資料存取導致的白屏問題。
+ * 2. 權限修復：嚴格遵循登入後監聽規則 (Rule 3)，加入錯誤處理回調。
+ * 3. 備註摺疊系統：預設隱藏行程備註，支援「全局開關」與「單獨點擊展開」。
+ * 4. 標籤圖案優化：注入旅遊圖示作為 Favicon (藍色飛機)。
+ * 5. 計算機優化：運算精度維持小數點後 8 位數。
  */
 
-const VERSION_INFO = "穩定版 V3.1 - 2026/02/07 01:10";
+const VERSION_INFO = "穩定版 V3.2 - 2026/02/07 01:15";
 
 // --- 主要國家資料 ---
 const currencyNames = {
@@ -64,10 +65,15 @@ const getFirebaseServices = () => {
       appId: "1:62005891712:web:4653c17db0c38f981d0c65"
     };
     const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(config);
+    
+    // 安全處理 appId，防止包含斜線導致權限錯誤
+    const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
+    const sanitizedAppId = rawAppId.replace(/\//g, '_');
+
     return {
       fAuth: getAuth(firebaseApp),
       fDb: getFirestore(firebaseApp),
-      fAppId: typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh'
+      fAppId: sanitizedAppId
     };
   } catch (e) {
     console.error("Firebase Services Init Failed", e);
@@ -148,7 +154,10 @@ const WeatherMaster = ({ tripInfo }) => {
       setResults({
         location: name,
         daily: (weatherData.daily?.time || []).map((time, i) => ({
-          date: time, max: weatherData.daily.temperature_2m_max[i], min: weatherData.daily.temperature_2m_min[i], code: weatherData.daily.weather_code[i]
+          date: time, 
+          max: weatherData.daily?.temperature_2m_max?.[i] ?? 0, 
+          min: weatherData.daily?.temperature_2m_min?.[i] ?? 0, 
+          code: weatherData.daily?.weather_code?.[i] ?? 0
         }))
       });
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -241,6 +250,7 @@ const CurrencyMaster = () => {
   const [targetCurrency, setTargetCurrency] = useState('TWD');
   const [amount, setAmount] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [calcDisplay, setCalcDisplay] = useState('0');
 
   const fetchRates = async () => {
@@ -295,10 +305,10 @@ const CurrencyMaster = () => {
 
       <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800">
           <div className="flex items-center gap-3 mb-8 px-2"><div className="p-3 bg-blue-600 rounded-2xl"><Calculator size={24} /></div><h4 className="font-black text-2xl tracking-tight">旅程小計算機</h4></div>
-          <div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right shadow-inner border border-white/5 overflow-hidden"><span className="text-5xl md:text-6xl font-black font-mono tracking-tighter text-white block truncate">{calcDisplay}</span></div>
+          <div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right shadow-inner border border-white/5 overflow-hidden"><span className="text-5xl md:text-6xl font-black font-mono tracking-tighter text-white block truncate leading-tight">{calcDisplay}</span></div>
           <div className="grid grid-cols-4 gap-4 md:gap-6">
               {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>))}
-              <button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all active:scale-95"><Equal size={32}/></button>
+              <button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all active:scale-95 shadow-xl">套用到金額欄位</button>
               <button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all shadow-xl active:scale-95">套用到金額欄位</button>
           </div>
       </div>
@@ -355,8 +365,9 @@ const App = () => {
     setFavicon();
   }, []);
 
-  // 🔐 登入邏輯 (遵循 Rule 3)
+  // 🔐 登入邏輯
   useEffect(() => {
+    if (!fAuth) return;
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -366,7 +377,7 @@ const App = () => {
         }
       } catch (e) {
         console.error("Auth process error", e);
-        await signInAnonymously(fAuth);
+        setIsLoading(false);
       }
     };
     initAuth();
@@ -377,7 +388,7 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 📊 資料監聽 (遵循 Rule 1)
+  // 📊 資料監聽
   useEffect(() => {
     if (!user || !fDb) return;
     const tripsRef = collection(fDb, 'artifacts', fAppId, 'public', 'data', 'trips');
@@ -392,8 +403,10 @@ const App = () => {
     if (!user || !tripId || !fDb) return;
     const itinRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'itineraries', tripId);
     const unsubItin = onSnapshot(itinRef, (docSnap) => {
-      if (docSnap.exists()) setItineraryData({ days: docSnap.data().days || {}, checklist: docSnap.data().checklist || [] });
-      setView('editor');
+      if (docSnap.exists()) {
+        setItineraryData({ days: docSnap.data().days || {}, checklist: docSnap.data().checklist || [] });
+        setView('editor');
+      }
     }, (err) => { console.error("Itinerary fetch error:", err); });
 
     const tripRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'trips', tripId);
@@ -471,7 +484,7 @@ const App = () => {
         </div>
       ) : (
         <div className="w-full flex flex-col items-center pb-24 animate-fade-in">
-          <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50 shadow-sm">
+          <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
             <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><div className="p-2 bg-blue-600 text-white rounded-2xl shadow-lg"><Plane size={24} className="rotate-45" /></div><span className="tracking-tighter uppercase">Traveler</span></div>
             <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
               <button onClick={() => setActiveTab('itinerary')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'itinerary' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>行程</button>
@@ -479,7 +492,7 @@ const App = () => {
               <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>清單</button>
               <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>匯率</button>
             </div>
-            <div className="text-right font-black text-slate-800">{tripInfo.city} 之旅</div>
+            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
           
           <main className="w-full max-w-5xl p-6 md:p-12">
@@ -505,7 +518,7 @@ const App = () => {
                     </div>
                     <div className="flex-1">
                       <span className="text-lg text-slate-400 font-bold ml-1 mb-1 block tracking-tight">({getFormattedDate(tripInfo.startDate, activeDay)} {getDayOfWeek(tripInfo.startDate, activeDay)})</span>
-                      <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full" placeholder="今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} />
+                      <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full transition-all" placeholder="今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} />
                     </div>
                   </div>
                   <div className="flex justify-center md:justify-start">
@@ -528,7 +541,7 @@ const App = () => {
                             ) : ( <div className="flex justify-between items-start gap-4">
                                 <div className="space-y-4 flex-1">
                                   <div className="flex items-center gap-4 flex-wrap">
-                                    <h4 className="text-3xl font-black text-slate-800 leading-tight tracking-tight">{item.spot}</h4>
+                                    <h4 className="text-3xl font-black text-slate-800 leading-tight">{item.spot}</h4>
                                     <div className="flex gap-2">
                                       <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm"><MapPin size={14} /> 地圖</a>
                                       {item.note && (
