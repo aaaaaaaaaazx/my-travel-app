@@ -27,14 +27,15 @@ import {
 /**
  * 🏆 Travel Planner - 最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 專屬標記：首頁歡迎語加入「彥麟製作」。
- * 2. 計算機優化：運算精度維持小數點後 8 位數，支援高精度試算。
- * 3. 完整計算機：匯率頁面下方配置完整實體計算機，支援一鍵套用。
- * 4. 天氣優化：結束日期自動預設為旅程最後一天。
- * 5. 匯率選單優化：來源與目標幣別均加入國家中文名稱。
+ * 1. 標題強化：Day 標題與導覽列同步顯示日期與星期幾。
+ * 2. 專屬標記：首頁歡迎語加入「彥麟製作」。
+ * 3. 計算機優化：運算精度維持小數點後 8 位數，支援高精度試算。
+ * 4. 完整計算機：匯率頁面下方配置完整實體計算機，支援一鍵套用。
+ * 5. 天氣優化：結束日期自動預設為旅程最後一天。
+ * 6. 匯率選單優化：來源與目標幣別均加入國家中文名稱。
  */
 
-const VERSION_INFO = "穩定版 V1.6 - 2026/02/06 11:35";
+const VERSION_INFO = "穩定版 V1.8 - 2026/02/06 11:55";
 
 // --- 精簡後的主要國家資料 ---
 const currencyNames = {
@@ -86,9 +87,10 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// 💡 權限關鍵：必須嚴格符合 Segment 規範，固定為 travel-yeh 以找回資料
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
 const appId = rawAppId.replace(/\//g, '_');
-const apiKey = ""; 
+const apiKey = ""; // 執行環境自動注入
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
@@ -97,6 +99,16 @@ const getFormattedDate = (baseDate, dayOffset) => {
     const date = new Date(baseDate);
     date.setDate(date.getDate() + (dayOffset - 1));
     return date.toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' });
+  } catch (e) { return ""; }
+};
+
+const getDayOfWeek = (baseDate, dayOffset, short = false) => {
+  if (!baseDate) return "";
+  try {
+    const date = new Date(baseDate);
+    date.setDate(date.getDate() + (dayOffset - 1));
+    const weekday = date.toLocaleDateString('zh-TW', { weekday: 'long' });
+    return short ? weekday.replace('星期', '') : weekday;
   } catch (e) { return ""; }
 };
 
@@ -264,7 +276,6 @@ const CurrencyMaster = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   
-  // 計算機狀態
   const [calcDisplay, setCalcDisplay] = useState('0');
 
   const [customRates, setCustomRates] = useState(() => {
@@ -330,7 +341,6 @@ const CurrencyMaster = () => {
 
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto">
-      {/* 匯率轉換主面板 */}
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden transition-all">
         <div className="p-10 md:p-14">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center">
@@ -563,14 +573,24 @@ const App = () => {
               <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><ListChecks size={14}/> 清單</button>
               <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><Coins size={14}/> 匯率</button>
             </div>
-            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
+            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
           
           <main className="w-full max-w-5xl p-6 md:p-12 animate-fade-in">
             {activeTab === 'itinerary' ? (
               <div className="space-y-12">
-                <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">{Object.keys(itineraryData?.days || {}).map(day => ( <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}><span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span><span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day))}</span></button> ))}</div>
-                <div className="text-center md:text-left space-y-4"><div className="flex flex-col md:flex-row md:items-end gap-4"><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay}</h2><input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 flex-1 transition-all" placeholder="輸入今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} /></div><div className="h-1 bg-slate-100 rounded-full w-full max-w-[400px]"></div></div>
+                <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">
+                    {Object.keys(itineraryData?.days || {}).map(day => (
+                      <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+                        <span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span>
+                        <span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day))} ({getDayOfWeek(tripInfo.startDate, parseInt(day), true)})</span>
+                      </button>
+                    ))}
+                </div>
+                <div className="text-center md:text-left space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-end gap-4"><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay} <span className="text-2xl not-italic ml-2 text-slate-400 font-bold">({getFormattedDate(tripInfo.startDate, activeDay)} {getDayOfWeek(tripInfo.startDate, activeDay)})</span></h2><input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 flex-1 transition-all" placeholder="輸入今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} /></div>
+                  <div className="h-1 bg-slate-100 rounded-full w-full max-w-[400px]"></div>
+                </div>
                 <div className="bg-white p-8 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
                   <form onSubmit={async e => { e.preventDefault(); const current = itineraryData?.days?.[activeDay]?.spots || []; await updateItinField(`days.${activeDay}.spots`, [...current, { ...newSpot, id: Date.now().toString() }]); setNewSpot({ time: '09:00', spot: '', note: '' }); }} className="mb-12 space-y-3 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner"><div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm"><Clock size={18} className="text-blue-500" /><input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 shadow-none" /></div><input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" /></div><div className="flex gap-3"><textarea placeholder="詳細備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none bg-white outline-none shadow-sm text-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg"><Plus size={24}/><span className="text-[10px]">加入</span></button></div></form>
                   <div className="space-y-10 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full">
