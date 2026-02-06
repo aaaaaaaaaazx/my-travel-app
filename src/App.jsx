@@ -27,24 +27,30 @@ import {
 /**
  * 🏆 Travel Planner - 最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 簡易計算機：匯率頁面加入計算機功能，計算結果可一鍵套用至轉換器。
- * 2. 旅程清單管理：首頁清單支援刪除、編修與顯示建立日期。
- * 3. 幣值互換：匯率頁面支援一鍵切換兌換方向。
- * 4. 滑動日期導覽：上方方形日期列加入精美可見的滑桿，支援流暢滑動。
- * 5. 結構化清單：完全復刻 6 大類別行李清單。
- * 6. 天氣預測：整合中文地點編碼與日期區間預報。
+ * 1. 天氣優化：結束日期自動預設為旅程最後一天。
+ * 2. 幣別精簡：僅保留主要旅遊國家，並全面顯示國家中文名稱。
+ * 3. 計算機強化：匯率頁面加入顯性計算機按鈕，支援運算結果套用。
+ * 4. 旅程清單管理：首頁清單支援刪除、編修與顯示建立日期。
+ * 5. 滑動日期導覽：上方方形日期列加入精美可見的滑桿。
+ * 6. 結構化清單：完全復刻 6 大類別行李清單。
  */
 
-const VERSION_INFO = "穩定版 V1.5 - 2026/02/06 10:03";
+const VERSION_INFO = "穩定版 V1.6 - 2026/02/06 10:20";
 
-// --- 靜態配置與資料對照 ---
+// --- 精簡後的主要國家資料 ---
 const currencyNames = {
-  "USD": "美國 - 美金", "TWD": "台灣 - 台幣", "HKD": "香港 - 港幣", "JPY": "日本 - 日圓", "EUR": "歐盟 - 歐元",
-  "GBP": "英國 - 英鎊", "AUD": "澳洲 - 澳幣", "CAD": "加拿大 - 加幣", "CNY": "中國 - 人民幣", "KRW": "韓國 - 韓元",
-  "SGD": "新加坡 - 新加坡幣", "NZD": "紐西蘭 - 紐西蘭幣", "CHF": "瑞士 - 瑞士法郎", "SEK": "瑞典 - 瑞典克朗",
-  "THB": "泰國 - 泰銖", "PHP": "菲律賓 - 披索", "IDR": "印尼 - 印尼盾", "VND": "越南 - 越南盾",
-  "MYR": "馬來西亞 - 令吉", "INR": "印度 - 盧比", "MOP": "澳門 - 澳門幣", "ZAR": "南非 - 蘭特",
-  "BRL": "巴西 - 里亞爾", "MXN": "墨西哥 - 披索", "TRY": "土耳其 - 里拉"
+  "TWD": "台灣 - 台幣",
+  "USD": "美國 - 美金",
+  "JPY": "日本 - 日圓",
+  "KRW": "韓國 - 韓元",
+  "THB": "泰國 - 泰銖",
+  "VND": "越南 - 越南盾",
+  "HKD": "香港 - 港幣",
+  "EUR": "歐盟 - 歐元",
+  "CNY": "中國 - 人民幣",
+  "GBP": "英國 - 英鎊",
+  "SGD": "新加坡 - 新加坡幣",
+  "AUD": "澳洲 - 澳幣"
 };
 
 const CHECKLIST_CATEGORIES = [
@@ -97,16 +103,38 @@ const formatFullDate = (isoString) => {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// --- 子組件：天氣預測 ---
+// --- 子組件：天氣預測 (含自動日期計算) ---
 const WeatherMaster = ({ tripInfo }) => {
+  // 🌟 自動計算結束日期
+  const defaultEndDate = useMemo(() => {
+    if (!tripInfo?.startDate || !tripInfo?.duration) return '';
+    try {
+      const d = new Date(tripInfo.startDate);
+      d.setDate(d.getDate() + (parseInt(tripInfo.duration) - 1));
+      return d.toISOString().split('T')[0];
+    } catch (e) { return ''; }
+  }, [tripInfo]);
+
   const [q, setQ] = useState({ 
     dest: tripInfo?.city || '', 
     start: tripInfo?.startDate || new Date().toISOString().split('T')[0],
-    end: '' 
+    end: defaultEndDate 
   });
+
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+
+  // 當 tripInfo 改變時同步更新
+  useEffect(() => {
+    if (tripInfo) {
+      setQ({
+        dest: tripInfo.city || '',
+        start: tripInfo.startDate || '',
+        end: defaultEndDate
+      });
+    }
+  }, [tripInfo, defaultEndDate]);
 
   const getWeatherInfo = (code) => {
     if (code === 0) return { icon: Sun, label: "晴天", color: "text-orange-500", tip: "紫外線強，建議注意防曬與補水。" };
@@ -225,7 +253,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：匯率管理 (含簡易計算機) ---
+// --- 子組件：匯率管理 ---
 const CurrencyMaster = () => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -235,7 +263,6 @@ const CurrencyMaster = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   
-  // 計算機狀態
   const [calcDisplay, setCalcDisplay] = useState('0');
   const [calcActive, setCalcActive] = useState(false);
 
@@ -261,13 +288,11 @@ const CurrencyMaster = () => {
     localStorage.setItem('use_custom_status', JSON.stringify(useCustom));
   }, [customRates, useCustom]);
 
-  // 🌟 計算機邏輯
   const handleCalcInput = (val) => {
     if (val === 'C') {
         setCalcDisplay('0');
     } else if (val === '=') {
         try {
-            // 安全的簡易計算邏輯
             const result = Function(`'use strict'; return (${calcDisplay})`)();
             setCalcDisplay(String(Number(result).toFixed(2)));
         } catch (e) { setCalcDisplay('Error'); }
@@ -293,28 +318,31 @@ const CurrencyMaster = () => {
     return (amount * rate).toFixed(2);
   }, [amount, targetCurrency, rates, customRates, useCustom]);
 
-  const filteredCurrencies = Object.keys(rates).filter(c => (currencyNames[c] || "").toLowerCase().includes(searchTerm.toLowerCase()) || c.toLowerCase().includes(searchTerm.toLowerCase()));
+  const majorCurrencies = Object.keys(currencyNames);
+  const filteredCurrencies = majorCurrencies.filter(c => 
+    (currencyNames[c] || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+    c.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const getFullDisplayName = (code) => currencyNames[code] ? `${currencyNames[code]} (${code})` : code;
+  const getFullDisplayName = (code) => currencyNames[code] || code;
 
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto">
-      {/* 🌟 計算機工具面板 (可切換) */}
-      <div className={`overflow-hidden transition-all duration-500 ${calcActive ? 'max-h-[500px] mb-8' : 'max-h-0'}`}>
-          <div className="bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl border border-slate-800">
-              <div className="flex justify-between items-center mb-6">
-                  <h4 className="font-black text-xl flex items-center gap-2"><Calculator size={24} className="text-blue-400" /> 旅程小計算機</h4>
-                  <button onClick={() => setCalcActive(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={20}/></button>
+      <div className={`overflow-hidden transition-all duration-500 ease-in-out ${calcActive ? 'max-h-[600px] mb-8 opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className="bg-slate-900 text-white p-8 rounded-[3.5rem] shadow-2xl border border-slate-800">
+              <div className="flex justify-between items-center mb-6 px-2">
+                  <h4 className="font-black text-xl flex items-center gap-2 text-blue-400"><Calculator size={24} /> 旅程小計算機</h4>
+                  <button onClick={() => setCalcActive(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"><X size={20}/></button>
               </div>
-              <div className="bg-black/40 p-6 rounded-2xl mb-6 text-right">
-                  <span className="text-4xl font-black font-mono tracking-tighter">{calcDisplay}</span>
+              <div className="bg-black/40 p-8 rounded-[2rem] mb-8 text-right shadow-inner border border-white/5">
+                  <span className="text-5xl font-black font-mono tracking-tighter text-white">{calcDisplay}</span>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-4 gap-4">
                   {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (
-                      <button key={btn} onClick={() => handleCalcInput(btn)} className={`p-4 rounded-xl font-black text-xl transition-all ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/10 hover:bg-white/20'}`}>{btn}</button>
+                      <button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 rounded-2xl font-black text-2xl transition-all shadow-sm ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-50' : 'bg-white/10 hover:bg-white/20'}`}>{btn}</button>
                   ))}
-                  <button onClick={() => handleCalcInput('=')} className="col-span-2 p-4 bg-green-600 rounded-xl font-black text-xl hover:bg-green-500 transition-all flex items-center justify-center gap-2"><Equal size={24}/> 計算</button>
-                  <button onClick={applyCalcToAmount} className="col-span-2 p-4 bg-white text-slate-900 rounded-xl font-black text-xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2">套用到金額</button>
+                  <button onClick={() => handleCalcInput('=')} className="col-span-2 py-6 bg-green-600 text-white rounded-2xl font-black text-2xl hover:bg-green-500 transition-all flex items-center justify-center gap-2"><Equal size={28}/> 計算結果</button>
+                  <button onClick={applyCalcToAmount} className="col-span-2 py-6 bg-white text-slate-900 rounded-2xl font-black text-xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2 shadow-xl">套用到金額</button>
               </div>
           </div>
       </div>
@@ -322,50 +350,42 @@ const CurrencyMaster = () => {
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden transition-all">
         <div className="p-10 md:p-14">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center">
-            <div className="md:col-span-3"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">輸入金額</label>
+            <div className="md:col-span-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">輸入金額</label>
               <div className="relative">
-                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300"><DollarSign size={24} /></div>
-                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full pl-14 pr-14 py-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
-                <button 
-                    onClick={() => setCalcActive(!calcActive)}
-                    className="absolute right-14 top-1/2 -translate-y-1/2 text-slate-300 hover:text-blue-500 transition-colors"
-                >
-                    <Calculator size={20} />
-                </button>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1.5 text-xs font-black cursor-pointer outline-none max-w-[100px] transition-all">{Object.keys(rates).map(curr => <option key={curr} value={curr}>{curr}</option>)}</select></div>
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"><DollarSign size={24} /></div>
+                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full pl-14 pr-16 py-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
+                <button onClick={() => setCalcActive(!calcActive)} className={`absolute right-14 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all ${calcActive ? 'text-blue-600 bg-blue-50' : 'text-slate-300 hover:text-blue-500 hover:bg-slate-100'}`} title="開啟計算機"><Calculator size={22} /></button>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black cursor-pointer outline-none transition-all">{majorCurrencies.map(curr => <option key={curr} value={curr}>{curr}</option>)}</select></div>
               </div>
+              <p className="text-[10px] font-bold text-slate-400 mt-2 ml-1">{getFullDisplayName(baseCurrency)}</p>
             </div>
             <div className="flex justify-center md:col-span-1">
               <button onClick={handleSwap} className="bg-blue-50 p-4 rounded-full text-blue-600 shadow-inner hover:bg-blue-600 hover:text-white hover:rotate-180 transition-all duration-500 active:scale-90 group shadow-md"><ArrowLeftRight className="md:rotate-0 rotate-90" size={28} /></button>
             </div>
-            <div className="md:col-span-3"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">轉換結果</label>
-              <div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl shadow-blue-100"><div><span className="text-3xl font-black tracking-tight">{convertedAmount}</span><p className="text-blue-100 text-[10px] mt-1 font-bold">{getFullDisplayName(targetCurrency)}</p></div><select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black cursor-pointer outline-none max-w-[150px] transition-all">{Object.keys(rates).map(curr => <option key={curr} value={curr}>{getFullDisplayName(curr)}</option>)}</select></div>
+            <div className="md:col-span-3">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">轉換結果</label>
+              <div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl shadow-blue-100">
+                <div><span className="text-3xl font-black tracking-tight">{convertedAmount}</span><p className="text-blue-100 text-[10px] mt-1 font-bold">{getFullDisplayName(targetCurrency)}</p></div>
+                <select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black cursor-pointer outline-none max-w-[150px] transition-all">{majorCurrencies.map(curr => <option key={curr} value={curr}>{getFullDisplayName(curr)}</option>)}</select>
+              </div>
             </div>
           </div>
         </div>
-        <div className="bg-slate-50 border-t px-10 py-5 flex flex-wrap gap-4 justify-between items-center">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                <TrendingUp size={16} className="text-green-500" />
-                <span>{useCustom[targetCurrency] ? '目前使用手動匯率' : '全球市場即時匯率'}</span>
-            </div>
-            <div className="flex gap-4">
-                <button onClick={() => setShowSettings(!showSettings)} className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black transition-all ${showSettings ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border text-slate-600 shadow-sm hover:border-blue-100'}`}><Settings2 size={16} /> 匯率管理</button>
-                <button onClick={fetchRates} className="text-xs font-black text-blue-600 p-2 hover:bg-blue-100 rounded-xl transition-all"><RotateCcw size={16} /></button>
-            </div>
-        </div>
+        <div className="bg-slate-50 border-t px-10 py-5 flex flex-wrap gap-4 justify-between items-center"><div className="flex items-center gap-2 text-xs font-bold text-slate-500"><TrendingUp size={16} className="text-green-500" /><span>{useCustom[targetCurrency] ? '目前使用手動匯率' : '全球市場即時匯率'}</span></div><div className="flex gap-4"><button onClick={() => setShowSettings(!showSettings)} className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black transition-all ${showSettings ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border text-slate-600 shadow-sm hover:border-blue-100'}`}><Settings2 size={16} /> 匯率管理</button><button onClick={fetchRates} className="text-xs font-black text-blue-600 p-2 hover:bg-blue-100 rounded-xl transition-all"><RotateCcw size={16} /></button></div></div>
       </div>
       
       {showSettings && (
         <div className="bg-white rounded-[3rem] border border-slate-100 shadow-2xl overflow-hidden animate-fade-in">
-          <div className="p-8 border-b flex justify-between items-center bg-slate-50/50"><div><h3 className="font-black text-xl text-slate-800 tracking-tight">匯率詳細設定</h3><p className="text-xs text-slate-400 font-bold tracking-tight">搜尋國家或代碼來覆寫匯率值</p></div><div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type="text" placeholder="搜尋國家 (如: 日本)..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-12 pr-6 py-3 border rounded-2xl text-sm font-bold outline-none focus:ring-4 ring-blue-50 w-64 transition-all shadow-sm" /></div></div>
+          <div className="p-8 border-b flex justify-between items-center bg-slate-50/50"><div><h3 className="font-black text-xl text-slate-800 tracking-tight">主要國家匯率設定</h3><p className="text-xs text-slate-400 font-bold tracking-tight">手動覆寫各國市場匯率值</p></div><div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type="text" placeholder="搜尋國家..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-12 pr-6 py-3 border rounded-2xl text-sm font-bold outline-none focus:ring-4 ring-blue-50 w-64 transition-all shadow-sm" /></div></div>
           <div className="max-h-[400px] overflow-y-auto scrollbar-hide">
             <table className="w-full text-left"><thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black sticky top-0 z-10"><tr><th className="px-8 py-5">國家與幣別</th><th className="px-8 py-5 text-right">市場</th><th className="px-8 py-5 text-center">模式</th><th className="px-8 py-5 text-right">數值</th></tr></thead>
-              <tbody className="divide-y divide-slate-50">{filteredCurrencies.map(curr => (<tr key={curr} className="hover:bg-blue-50/20 transition-colors"><td className="px-8 py-5"><div className="font-black text-slate-700 leading-tight">{currencyNames[curr] || "其他"}</div><div className="text-[10px] text-slate-400 font-bold uppercase">{curr}</div></td><td className="px-8 py-5 text-right font-mono text-slate-500 text-sm font-bold">{rates[curr]?.toFixed(4)}</td><td className="px-8 py-5 text-center"><button onClick={() => setUseCustom(p => ({...p, [curr]: !p[curr]}))} className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${useCustom[curr] ? 'bg-orange-100 text-orange-600 border border-orange-200' : 'bg-green-100 text-green-600 border border-green-200'}`}>{useCustom[curr] ? '手動' : '自動'}</button></td><td className="px-8 py-5 text-right"><input type="number" step="0.0001" disabled={!useCustom[curr]} value={customRates[curr] || ''} onChange={e => setCustomRates(p => ({...p, [curr]: parseFloat(e.target.value) || 0}))} className={`w-24 p-2 border rounded-xl text-sm text-right font-bold transition-all ${useCustom[curr] ? 'bg-white border-orange-300 ring-4 ring-orange-50' : 'bg-slate-50 border-transparent'}`} /></td></tr>))}</tbody>
+              <tbody className="divide-y divide-slate-50">{filteredCurrencies.map(curr => (<tr key={curr} className="hover:bg-blue-50/20 transition-colors"><td className="px-8 py-5"><div className="font-black text-slate-700 leading-tight">{currencyNames[curr]}</div><div className="text-[10px] text-slate-400 font-bold uppercase">{curr}</div></td><td className="px-8 py-5 text-right font-mono text-slate-500 text-sm font-bold">{rates[curr]?.toFixed(4)}</td><td className="px-8 py-5 text-center"><button onClick={() => setUseCustom(p => ({...p, [curr]: !p[curr]}))} className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${useCustom[curr] ? 'bg-orange-100 text-orange-600 border border-orange-200' : 'bg-green-100 text-green-600 border border-green-200'}`}>{useCustom[curr] ? '手動' : '自動'}</button></td><td className="px-8 py-5 text-right"><input type="number" step="0.0001" disabled={!useCustom[curr]} value={customRates[curr] || ''} onChange={e => setCustomRates(p => ({...p, [curr]: parseFloat(e.target.value) || 0}))} className={`w-24 p-2 border rounded-xl text-sm text-right font-bold transition-all ${useCustom[curr] ? 'bg-white border-orange-300 ring-4 ring-orange-50' : 'bg-slate-50 border-transparent'}`} /></td></tr>))}</tbody>
             </table>
           </div>
         </div>
       )}
-      {loading && <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[200] flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-blue-600 font-black tracking-widest italic">連線同步中...</p></div>}
+      {loading && <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[200] flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-blue-600 font-black tracking-widest italic">同步匯率中...</p></div>}
     </div>
   );
 };
@@ -385,14 +405,13 @@ const App = () => {
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
   const [aiStatus, setAiStatus] = useState({ type: '', message: '' });
-
   const [editingTripId, setEditingTripId] = useState(null);
 
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'premium-ui-v1.5-engine';
+    const style = document.createElement('style'); style.id = 'premium-ui-v1.6-engine';
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { 
@@ -507,7 +526,7 @@ const App = () => {
             <div className="space-y-6"><h3 className="text-xl font-black text-slate-800 flex items-center gap-2">{editingTripId ? <Edit3 className="text-blue-600" /> : <Plus className="text-blue-600" />} {editingTripId ? '編輯旅程' : '建立新旅程'}</h3>
               <form onSubmit={handleCreateOrUpdate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-white shadow-slate-200">
                 <div className="grid grid-cols-2 gap-6"><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">國家</label><input required placeholder="如: 日本" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.country} onChange={e => setTripInfo({...tripInfo, country: e.target.value})} /></div><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">城市</label><input required placeholder="如: 東京" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm" value={tripInfo.city} onChange={e => setTripInfo({...tripInfo, city: e.target.value})} /></div></div>
-                <div className="grid grid-cols-2 gap-6"><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">日期</label><input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} /></div><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">天數</label><input required type="number" min="1" max="14" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none shadow-sm" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} /></div></div>
+                <div className="grid grid-cols-2 gap-6"><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">日期</label><input required type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 shadow-sm" value={tripInfo.startDate} onChange={e => setTripInfo({...tripInfo, startDate: e.target.value})} /></div><div className="space-y-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">天數</label><input required type="number" min="1" max="14" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-4 focus:ring-blue-500/10 shadow-sm" value={tripInfo.duration} onChange={e => setTripInfo({...tripInfo, duration: e.target.value})} /></div></div>
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 rounded-3xl font-black shadow-2xl transition-all">{editingTripId ? '儲存修改' : '開始規劃'}</button>
                 {editingTripId && <button type="button" onClick={() => { setEditingTripId(null); setTripInfo({country:'', city:'', startDate:'', duration:3}); }} className="w-full text-slate-400 font-bold py-2 hover:text-slate-600 transition-colors">取消</button>}
               </form>
@@ -526,12 +545,12 @@ const App = () => {
           <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
             <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><div className="p-2 bg-blue-600 text-white rounded-2xl group-hover:rotate-12 transition-transform shadow-lg shadow-blue-100"><Plane size={24} className="rotate-45" /></div><span className="tracking-tighter uppercase font-black font-sans">Traveler</span></div>
             <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
-              <button onClick={() => setActiveTab('itinerary')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'itinerary' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Calendar size={14}/> 行程規劃</button>
-              <button onClick={() => setActiveTab('weather')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'weather' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Sun size={14}/> 天氣預測</button>
-              <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><ListChecks size={14}/> 準備清單</button>
-              <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Coins size={14}/> 匯率管理</button>
+              <button onClick={() => setActiveTab('itinerary')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'itinerary' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Calendar size={14}/> 行程</button>
+              <button onClick={() => setActiveTab('weather')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'weather' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Sun size={14}/> 天氣</button>
+              <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><ListChecks size={14}/> 清單</button>
+              <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}><Coins size={14}/> 匯率</button>
             </div>
-            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
+            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
           
           <main className="w-full max-w-5xl p-6 md:p-12 animate-fade-in">
@@ -543,7 +562,7 @@ const App = () => {
                   <form onSubmit={async e => { e.preventDefault(); const current = itineraryData?.days?.[activeDay]?.spots || []; await updateItinField(`days.${activeDay}.spots`, [...current, { ...newSpot, id: Date.now().toString() }]); setNewSpot({ time: '09:00', spot: '', note: '' }); }} className="mb-12 space-y-3 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner"><div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm"><Clock size={18} className="text-blue-500" /><input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 shadow-none" /></div><input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm" /></div><div className="flex gap-3"><textarea placeholder="詳細備註..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none bg-white outline-none shadow-sm text-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black flex flex-col items-center justify-center gap-1 active:scale-95 shadow-lg"><Plus size={24}/><span className="text-[10px]">加入</span></button></div></form>
                   <div className="space-y-10 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full">
                     {(itineraryData?.days?.[activeDay]?.spots || []).map((item, idx) => (
-                      <div key={item.id} className="relative pl-20 group"><div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === 0) return; [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md group-hover:scale-110 transition-transform">{item.time}</div><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === spots.length - 1) return; [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowDown size={20}/></button></div><div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
+                      <div key={item.id} className="relative pl-20 group"><div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === 0) return; [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div><button onClick={async () => { const spots = [...itineraryData.days[activeDay].spots]; if (idx === spots.length - 1) return; [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; await updateItinField(`days.${activeDay}.spots`, spots); }} className="text-slate-200 hover:text-blue-600 active:scale-125 transition-all"><ArrowDown size={20}/></button></div><div className={`p-10 bg-white border rounded-[3rem] transition-all group/item ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
                           {editingId === item.id ? ( <div className="space-y-4 flex-1 animate-fade-in"><div className="flex gap-2"><input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="p-3 border rounded-xl font-black text-sm w-32 bg-slate-50 outline-none" /><input value={editData.spot} onChange={e => setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black text-sm bg-slate-50 outline-none" /></div><textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl text-sm h-24 resize-none bg-slate-50 outline-none" /><div className="flex justify-end gap-3"><button onClick={() => setEditingId(null)} className="text-sm font-bold text-slate-400 px-4 transition-colors">取消</button><button onClick={async () => { const spots = itineraryData.days[activeDay].spots.map(s => s.id === editingId ? editData : s); await updateItinField(`days.${activeDay}.spots`, spots); setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg hover:bg-blue-700 transition-all active:scale-95"><Save size={16}/> 儲存</button></div></div>
                           ) : ( <div className="flex justify-between items-start gap-4"><div className="space-y-4 flex-1"><div className="flex items-center gap-4 flex-wrap"><h4 className="text-3xl font-black text-slate-800 tracking-tight leading-tight">{item.spot}</h4><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm"><MapPin size={14} /> 地圖</a></div><div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100"><p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{item.note || "暫無說明..."}</p></div></div><div className="flex flex-col gap-2 opacity-0 group-hover/item:opacity-100 transition-all"><button onClick={() => { setEditingId(item.id); setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"><Edit3 size={20} /></button><button onClick={async () => await updateItinField(`days.${activeDay}.spots`, itineraryData.days[activeDay].spots.filter(s => s.id !== item.id))} className="p-3 text-slate-300 hover:text-red-500 bg-red-50 rounded-2xl transition-all"><Trash2 size={20}/></button></div></div> )}
                         </div></div>
