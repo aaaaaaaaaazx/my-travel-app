@@ -17,26 +17,25 @@ import {
 } from 'firebase/firestore';
 import { 
   Plane, Calendar, Plus, Trash2, Clock, Share2, 
-  Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon, ChevronRight,
+  Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, Globe, Map as MapIcon, ChevronRight,
   Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown, Edit3, Save, MapPin, 
   ChevronDown, ChevronUp, StickyNote, Eye, EyeOff, Image as ImageIcon, ExternalLink,
-  Smartphone, Shirt, Bath, Pill, FileText, Package, Calculator, Equal, ArrowLeft,
+  Smartphone, Shirt, Bath, Pill, FileText, Package, Calculator, Equal, ArrowLeft, ArrowRight,
   Wallet, Utensils, Home, Car, ShoppingBag, MoreHorizontal, Receipt
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 修正內容：
- * 1. 修復編譯錯誤：移除重複匯入的 ArrowRight 符號。
- * 2. 穩定性修復：強化渲染守衛，防止因 Firebase 資料結構未就緒導致的白屏。
+ * 1. 修復白屏：移除重複匯入的 ArrowRight 符號，解決編譯失敗。
+ * 2. 穩定性強化：加入更嚴密的資料存取守衛，防止初始化崩潰。
  * 3. 費用管理系統：支援分類統計與雲端存檔。
  * 4. 豐富媒體支援：備註支援圖片網址顯示與自動超連結辨識。
  * 5. 備註摺疊系統：預設隱藏行程備註，支援單獨點擊展開。
  * 6. 計算機優化：精度維持小數點後 8 位數。
  */
 
-const VERSION_INFO = "穩定版 V2.9 - 2026/02/06 21:40";
+const VERSION_INFO = "穩定版 V2.10 - 2026/02/06 21:45";
 
 // --- 配置資料 ---
 const currencyNames = {
@@ -63,7 +62,7 @@ const CHECKLIST_CATEGORIES = [
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['空水壺或環保杯', '家中鑰匙', '眼罩', '外幣現金或信用卡', '耳塞', '頸枕'] }
 ];
 
-// --- Firebase 安全初始化邏輯 ---
+// --- Firebase 安全初始化 ---
 const getFirebaseServices = () => {
   try {
     const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
@@ -386,7 +385,6 @@ const CurrencyMaster = ({ parentAmount, setParentAmount }) => {
               <button onClick={() => setParentAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all shadow-xl active:scale-95">套用到金額</button>
           </div>
       </div>
-      {loading && <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[200] flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /></div>}
     </div>
   );
 };
@@ -536,7 +534,7 @@ const App = () => {
 
       {view === 'home' ? (
         <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-fade-in">
-          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的冒險之旅-彥麟製作</p></div>
+          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase leading-none">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的冒險之旅-彥麟製作</p></div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
             <div className="space-y-6"><h3 className="text-xl font-black text-slate-800 flex items-center gap-2">{editingTripId ? <Edit3 className="text-blue-600" /> : <Plus className="text-blue-600" />} {editingTripId ? '編輯旅程' : '建立新旅程'}</h3>
               <form onSubmit={handleCreateOrUpdate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-white shadow-slate-200">
