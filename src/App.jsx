@@ -27,15 +27,16 @@ import {
 /**
  * 🏆 Travel Planner - 最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 日期調整：加入整天行程移動功能 (往前/往後移)，支援快速調換日期順序。
- * 2. 標題強化：Day 標題與導覽列同步顯示日期與星期幾。
- * 3. 專屬標記：首頁歡迎語加入「彥麟製作」。
- * 4. 計算機優化：運算精度維持小數點後 8 位數，支援高精度試算。
- * 5. 完整計算機：匯率頁面下方配置完整實體計算機，支援一鍵套用。
- * 6. 天氣優化：結束日期自動預設為旅程最後一天。
+ * 1. 標籤圖案優化：動態注入旅遊圖示作為瀏覽器 Favicon。
+ * 2. 日期調整：加入整天行程移動功能 (往前/往後移)，支援快速調換日期順序。
+ * 3. 標題強化：Day 標題與導覽列同步顯示日期與星期幾。
+ * 4. 專屬標記：首頁歡迎語加入「彥麟製作」。
+ * 5. 計算機優化：運算精度維持小數點後 8 位數，支援高精度試算。
+ * 6. 完整計算機：匯率頁面下方配置完整實體計算機，支援一鍵套用。
+ * 7. 天氣優化：結束日期自動預設為旅程最後一天。
  */
 
-const VERSION_INFO = "穩定版 V1.9 - 2026/02/06 12:01";
+const VERSION_INFO = "穩定版 V1.9.1 - 2026/02/06 15:15";
 
 // --- 靜態配置與資料對照 ---
 const currencyNames = {
@@ -87,6 +88,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// 💡 權限關鍵：必須嚴格符合 Segment 規範，固定為 travel-yeh 以找回資料
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
 const appId = rawAppId.replace(/\//g, '_');
 const apiKey = ""; 
@@ -449,7 +451,21 @@ const App = () => {
       .premium-slider::-webkit-scrollbar-thumb { background-color: #2563eb; border-radius: 10px; border: 2px solid #f1f5f9; }
       @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       .animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
-    `; document.head.appendChild(style);
+    `; 
+    document.head.appendChild(style);
+
+    // 🌟 動態更換 Favicon (標籤圖案)
+    const setFavicon = () => {
+      let link = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      // 使用一個旅遊主題的飛機 SVG 作為圖案
+      link.href = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'%3E%3Cpath d='M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z'/%3E%3C/svg%3E";
+    };
+    setFavicon();
   }, []);
 
   useEffect(() => {
@@ -535,25 +551,19 @@ const App = () => {
     setTripInfo({ country: trip.country, city: trip.city, startDate: trip.startDate, duration: trip.duration });
   };
 
-  // 🌟 移動整天行程的邏輯
   const moveDay = async (direction) => {
     if (!user || !tripId || !db) return;
     const days = { ...itineraryData.days };
     const targetDay = activeDay + direction;
     const totalDays = parseInt(tripInfo.duration);
-
     if (targetDay < 1 || targetDay > totalDays) return;
-
-    // 交換兩天的資料
     const currentData = days[activeDay];
     const targetData = days[targetDay];
-
     days[activeDay] = targetData;
     days[targetDay] = currentData;
-
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), { days });
-      setActiveDay(targetDay); // 移動後視角切換到目標日期
+      setActiveDay(targetDay);
       setAiStatus({ type: 'success', message: `已將 Day ${activeDay} 與 Day ${targetDay} 對調` });
     } catch (err) { console.error("Move day failed", err); }
   };
@@ -595,7 +605,7 @@ const App = () => {
               <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><ListChecks size={14}/> 清單</button>
               <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><Coins size={14}/> 匯率</button>
             </div>
-            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
+            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
           
           <main className="w-full max-w-5xl p-6 md:p-12 animate-fade-in">
@@ -613,7 +623,6 @@ const App = () => {
                   <div className="flex flex-col md:flex-row md:items-end gap-4">
                     <div className="flex items-center gap-4">
                       <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay}</h2>
-                      {/* 🌟 整天行程移動按鈕 */}
                       <div className="flex bg-slate-100 p-1 rounded-xl shadow-inner border border-slate-200">
                         <button onClick={() => moveDay(-1)} disabled={activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors" title="整天往後移 (與前一天對調)"><ArrowLeft size={20}/></button>
                         <div className="w-px h-6 bg-slate-200 my-auto"></div>
