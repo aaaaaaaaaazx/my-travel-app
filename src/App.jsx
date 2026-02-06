@@ -25,18 +25,16 @@ import {
 } from 'lucide-react';
 
 /**
- * 🏆 Travel Planner - 彥麟製作最終黃金穩定版 (2026.02.06)
+ * 🏆 Travel Planner - 彥麟製作最終黃金基準穩定修復版 (2026.02.06)
  * ------------------------------------------------
- * 1. 備註摺疊系統：預設隱藏行程備註，支援「全局開關」與「單獨點擊展開」。
- * 2. 標籤圖案優化：動態注入旅遊圖示作為瀏覽器 Favicon (藍色飛機)。
- * 3. 日期調整：加入整天行程移動功能 (往前/往後移)。
- * 4. 標題強化：Day 標題與導覽列同步顯示日期與星期幾。
+ * 1. 權限修復：遵循 Rule 1 & Rule 3，加入 onSnapshot 錯誤回調，解決 permission-denied 問題。
+ * 2. 備註摺疊系統：預設隱藏行程備註，支援「全局開關」與「單獨點擊展開」。
+ * 3. 標籤圖案優化：動態注入旅遊圖示作為瀏覽器 Favicon (藍色飛機)。
+ * 4. 日期調整：加入整天行程移動功能 (往前/往後移)。
  * 5. 計算機優化：運算精度維持小數點後 8 位數。
- * 6. 完整計算機：匯率頁面下方配置完整實體計算機。
- * 7. 天氣優化：結束日期自動預設為旅程最後一天。
  */
 
-const VERSION_INFO = "穩定版 V2.0 - 2026/02/06 17:40";
+const VERSION_INFO = "穩定版 V2.1 - 2026/02/06 17:50";
 
 // --- 靜態配置與資料對照 ---
 const currencyNames = {
@@ -54,12 +52,12 @@ const CHECKLIST_CATEGORIES = [
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['空水壺或環保杯', '家中鑰匙', '眼罩', '外幣現金或信用卡', '耳塞', '頸枕'] }
 ];
 
-// --- Firebase 初始化 ---
+// --- Firebase 初始化安全保護 (遵循 Rule 1) ---
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = 'travel-yeh';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
@@ -160,7 +158,7 @@ const WeatherMaster = ({ tripInfo }) => {
               <div key={day.date} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg group">
                 <p className="text-[10px] font-black text-slate-300 mb-4">{day.date}</p>
                 <div className="flex justify-between items-start mb-6"><info.icon className={`${info.color}`} size={48} /><div className="text-right"><p className="text-3xl font-black text-slate-800">{Math.round(day.max)}°</p><p className="text-sm font-bold text-slate-300">{Math.round(day.min)}°</p></div></div>
-                <div className="bg-slate-50 p-4 rounded-2xl"><p className={`font-black text-sm mb-1 ${info.color}`}>{info.label}</p><p className="text-[11px] text-slate-500 leading-relaxed">{info.tip}</p></div>
+                <div className="bg-slate-50 p-4 rounded-2xl"><p className={`font-black text-sm mb-1 ${info.color}`}>{info.label}</p><p className="text-[11px] text-slate-500 font-bold leading-relaxed">{info.tip}</p></div>
               </div>
             );
           })}
@@ -207,9 +205,9 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {CHECKLIST_CATEGORIES.map(cat => (
-          <div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-50 flex flex-col h-fit hover:shadow-2xl transition-all">
-            <div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-sm"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500"><Plus size={20} /></button></div>
-            {addingToCategory === cat.id && <div className="mb-4 flex gap-2"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddItem(cat.id)} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={() => handleAddItem(cat.id)} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>}
+          <div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-100 flex flex-col h-fit hover:shadow-2xl transition-all">
+            <div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-sm"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Plus size={20} /></button></div>
+            {addingToCategory === cat.id && <div className="mb-4 flex gap-2 animate-fade-in"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddItem(cat.id)} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={() => handleAddItem(cat.id)} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>}
             <div className="space-y-3">
               {(groupedItems[cat.id] || []).map(item => (
                 <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>
@@ -227,7 +225,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：匯率管理 (高精度 8 位版) ---
+// --- 子組件：匯率管理 ---
 const CurrencyMaster = () => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -316,14 +314,14 @@ const CurrencyMaster = () => {
             </div>
           </div>
         </div>
-        <div className="mt-8 flex justify-between items-center"><div className="flex items-center gap-2 text-xs font-bold text-slate-500"><TrendingUp size={16} className="text-green-500" /><span>匯率已同步</span></div><div className="flex gap-4"><button onClick={() => setShowSettings(!showSettings)} className="flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all bg-white border text-slate-600 shadow-sm"><Settings2 size={16} /> 匯率管理</button><button onClick={fetchRates} className="text-xs font-black text-blue-600 p-2 hover:bg-blue-100 rounded-xl transition-all"><RotateCcw size={16} /></button></div></div>
+        <div className="mt-8 flex justify-between items-center"><div className="flex items-center gap-2 text-xs font-bold text-slate-500"><TrendingUp size={16} className="text-green-500" /><span>匯率已同步</span></div><div className="flex gap-4"><button onClick={() => setShowSettings(!showSettings)} className={`flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all bg-white border text-slate-600 shadow-sm`}><Settings2 size={16} /> 匯率管理</button><button onClick={fetchRates} className="text-xs font-black text-blue-600 p-2 hover:bg-blue-100 rounded-xl transition-all"><RotateCcw size={16} /></button></div></div>
       </div>
 
       <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800">
           <div className="flex items-center gap-3 mb-8 px-2"><div className="p-3 bg-blue-600 rounded-2xl"><Calculator size={24} /></div><h4 className="font-black text-2xl tracking-tight">旅程小計算機</h4></div>
           <div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right shadow-inner border border-white/5"><span className="text-6xl font-black font-mono tracking-tighter text-white block truncate leading-tight">{calcDisplay}</span></div>
           <div className="grid grid-cols-4 gap-4 md:gap-6">
-              {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>))}
+              {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-50' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>))}
               <button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all active:scale-95"><Equal size={32}/></button>
               <button onClick={applyCalcToAmount} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all active:scale-95 shadow-xl">套用到匯率輸入</button>
           </div>
@@ -357,9 +355,10 @@ const App = () => {
   const [editingTripId, setEditingTripId] = useState(null);
 
   // 🌟 備註展開管理狀態
-  const [showAllNotes, setShowAllNotes] = useState(false); // 全局開關 (預設隱藏)
-  const [expandedItems, setExpandedItems] = useState({}); // 單個手動展開記錄
+  const [showAllNotes, setShowAllNotes] = useState(false); 
+  const [expandedItems, setExpandedItems] = useState({}); 
 
+  // 🎨 最強樣式注入引擎
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
@@ -387,39 +386,74 @@ const App = () => {
     setFavicon();
   }, []);
 
+  // 🔐 登入邏輯 (遵循 Rule 3)
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); 
-      else await signInAnonymously(auth);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (e) {
+        console.error("Auth initialization error:", e);
+        await signInAnonymously(auth);
+      }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setIsLoading(false); });
+    const unsubscribe = onAuthStateChanged(auth, (u) => { 
+      setUser(u); 
+      setIsLoading(false); 
+    });
     return () => unsubscribe();
   }, []);
 
+  // 📊 資料監聽 (遵循 Rule 1 & Rule 3)
   useEffect(() => {
     if (!user) return;
     const tripsRef = collection(db, 'artifacts', appId, 'public', 'data', 'trips');
-    return onSnapshot(tripsRef, (snapshot) => {
+    const unsub = onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTrips(tripList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    }, (err) => {
+      console.error("Trips snapshot error:", err);
     });
+    return () => unsub();
   }, [user]);
 
   useEffect(() => {
     if (!user || !tripId) return;
     const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
-    const unsubItin = onSnapshot(itinRef, docSnap => {
-      if (docSnap.exists()) { setItineraryData({ days: docSnap.data().days || {}, checklist: docSnap.data().checklist || [] }); setView('editor'); }
+    const unsubItin = onSnapshot(itinRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setItineraryData({
+          days: docSnap.data().days || {},
+          checklist: docSnap.data().checklist || []
+        });
+        setView('editor');
+      }
+    }, (err) => {
+      console.error("Itinerary snapshot error:", err);
     });
+
     const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
-    const unsubTrip = onSnapshot(tripRef, docSnap => { if (docSnap.exists()) setTripInfo(docSnap.data()); });
+    const unsubTrip = onSnapshot(tripRef, (docSnap) => {
+      if (docSnap.exists()) setTripInfo(docSnap.data());
+    }, (err) => {
+      console.error("Trip Detail snapshot error:", err);
+    });
+
     return () => { unsubItin(); unsubTrip(); };
   }, [user, tripId]);
 
   const updateItinField = async (field, value) => {
     if (!user || !tripId) return;
-    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), { [field]: value }); } catch (err) { console.error(err); }
+    try {
+      const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
+      await updateDoc(itinRef, { [field]: value });
+    } catch (err) {
+      console.error("Update Field error:", err);
+    }
   };
 
   const moveDay = async (direction) => {
@@ -431,29 +465,40 @@ const App = () => {
     const targetData = days[targetDay];
     days[activeDay] = targetData;
     days[targetDay] = currentData;
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), { days });
-    setActiveDay(targetDay);
-    setAiStatus({ type: 'success', message: `已調換行程順序` });
+    
+    try {
+      const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
+      await updateDoc(itinRef, { days });
+      setActiveDay(targetDay);
+      setAiStatus({ type: 'success', message: `已調換行程順序` });
+    } catch (err) {
+      console.error("Move day error:", err);
+    }
   };
 
   const handleCreateOrUpdate = async e => {
     e.preventDefault(); if (!user) return; setIsLoading(true);
-    if (editingTripId) {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trips', editingTripId), { ...tripInfo });
-      setEditingTripId(null); setTripInfo({ country: '', city: '', startDate: '', duration: 3 });
+    try {
+      if (editingTripId) {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trips', editingTripId), { ...tripInfo });
+        setEditingTripId(null); setTripInfo({ country: '', city: '', startDate: '', duration: 3 });
+      } else {
+        const newId = crypto.randomUUID(); const days = {};
+        for (let i = 1; i <= Math.max(1, parseInt(tripInfo.duration)); i++) days[i] = { spots: [], title: '' };
+        const initialChecklist = [];
+        CHECKLIST_CATEGORIES.forEach(cat => cat.items.forEach((text, i) => initialChecklist.push({ id: `${cat.id}_${i}`, text, completed: false, categoryId: cat.id })));
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trips', newId), { ...tripInfo, creator: user.uid, createdAt: new Date().toISOString() });
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', newId), { days, checklist: initialChecklist });
+        setTripId(newId);
+      }
+    } catch (err) {
+      console.error("Create/Update trip error:", err);
+    } finally {
       setIsLoading(false);
-    } else {
-      const newId = crypto.randomUUID(); const days = {};
-      for (let i = 1; i <= Math.max(1, parseInt(tripInfo.duration)); i++) days[i] = { spots: [], title: '' };
-      const initialChecklist = [];
-      CHECKLIST_CATEGORIES.forEach(cat => cat.items.forEach((text, i) => initialChecklist.push({ id: `${cat.id}_${i}`, text, completed: false, categoryId: cat.id })));
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'trips', newId), { ...tripInfo, creator: user.uid, createdAt: new Date().toISOString() });
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', newId), { days, checklist: initialChecklist });
-      setTripId(newId); setIsLoading(false);
     }
   };
 
-  if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-black italic tracking-widest leading-none">同步雲端資料中...</p></div>;
+  if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-black italic tracking-widest leading-none">正在啟動彥麟的冒險引擎...</p></div>;
 
   return (
     <div className="w-full flex flex-col items-center min-h-screen">
@@ -461,7 +506,7 @@ const App = () => {
 
       {view === 'home' ? (
         <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-fade-in">
-          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的冒險之旅-彥麟製作</p></div>
+          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase leading-none">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的冒險之旅-彥麟製作</p></div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
             <div className="space-y-6"><h3 className="text-xl font-black text-slate-800 flex items-center gap-2">{editingTripId ? <Edit3 className="text-blue-600" /> : <Plus className="text-blue-600" />} {editingTripId ? '編輯旅程' : '建立新旅程'}</h3>
               <form onSubmit={handleCreateOrUpdate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-white shadow-slate-200">
@@ -495,26 +540,32 @@ const App = () => {
           <main className="w-full max-w-5xl p-6 md:p-12">
             {activeTab === 'itinerary' ? (
               <div className="space-y-12">
-                <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">{Object.keys(itineraryData?.days || {}).map(day => ( <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}><span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span><span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day)).slice(5)}</span></button> ))}</div>
+                <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">
+                  {Object.keys(itineraryData?.days || {}).map(day => (
+                    <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+                      <span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span>
+                      <span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day)).slice(5)}</span>
+                    </button>
+                  ))}
+                </div>
                 <div className="space-y-6">
                   <div className="flex flex-col md:flex-row md:items-end gap-4">
                     <div className="flex items-center gap-4">
                       <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay}</h2>
-                      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200"><button onClick={() => moveDay(-1)} disabled={activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20"><ArrowLeft size={20}/></button><div className="w-px h-6 bg-slate-200 my-auto"></div><button onClick={() => moveDay(1)} disabled={activeDay === parseInt(tripInfo.duration)} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20"><ArrowRight size={20}/></button></div>
+                      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                        <button onClick={() => moveDay(-1)} disabled={activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowLeft size={20}/></button>
+                        <div className="w-px h-6 bg-slate-200 my-auto"></div>
+                        <button onClick={() => moveDay(1)} disabled={activeDay === parseInt(tripInfo.duration)} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowRight size={20}/></button>
+                      </div>
                     </div>
                     <div className="flex-1">
                       <span className="text-lg text-slate-400 font-bold ml-1 mb-1 block">({getFormattedDate(tripInfo.startDate, activeDay)} {getDayOfWeek(tripInfo.startDate, activeDay)})</span>
                       <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full" placeholder="今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} />
                     </div>
                   </div>
-                  {/* 🌟 全局摺疊開關 */}
                   <div className="flex justify-center md:justify-start">
-                    <button 
-                      onClick={() => setShowAllNotes(!showAllNotes)}
-                      className={`flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all shadow-sm border ${showAllNotes ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
-                    >
-                      {showAllNotes ? <EyeOff size={16} /> : <Eye size={16} />}
-                      {showAllNotes ? '隱藏全部備註' : '顯示全部備註'}
+                    <button onClick={() => setShowAllNotes(!showAllNotes)} className={`flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all shadow-sm border ${showAllNotes ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}>
+                      {showAllNotes ? <EyeOff size={16} /> : <Eye size={16} />} {showAllNotes ? '隱藏全部備註' : '顯示全部備註'}
                     </button>
                   </div>
                 </div>
@@ -527,10 +578,7 @@ const App = () => {
                       return (
                         <div key={item.id} className="relative pl-20 group">
                           <div className="absolute left-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={() => { const spots = [...itineraryData.days[activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md group-hover:scale-110 transition-transform">{item.time}</div><button onClick={() => { const spots = [...itineraryData.days[activeDay].spots]; if (idx < spots.length-1) { [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowDown size={20}/></button></div>
-                          <div 
-                            onClick={() => setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))}
-                            className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl'}`}
-                          >
+                          <div onClick={() => setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${editingId === item.id ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl'}`}>
                             {editingId === item.id ? ( <div className="space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}><div className="flex gap-2"><input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none" /><input value={editData.spot} onChange={e => setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none" /></div><textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl h-24 bg-slate-50 outline-none text-sm" /><div className="flex justify-end gap-3"><button onClick={() => setEditingId(null)} className="text-sm font-bold text-slate-400 px-4">取消</button><button onClick={async () => { const spots = itineraryData.days[activeDay].spots.map(s => s.id === editingId ? editData : s); await updateItinField(`days.${activeDay}.spots`, spots); setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg">儲存</button></div></div>
                             ) : ( <div className="flex justify-between items-start gap-4">
                                 <div className="space-y-4 flex-1">
@@ -547,12 +595,13 @@ const App = () => {
                                   </div>
                                   {item.note && isExpanded && <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 animate-fade-in"><p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{item.note}</p></div>}
                                 </div>
-                                <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all"><button onClick={(e) => { e.stopPropagation(); setEditingId(item.id); setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl"><Edit3 size={20} /></button><button onClick={async (e) => { e.stopPropagation(); if(confirm('刪除景點？')) { const updated = itineraryData.days[activeDay].spots.filter(s => s.id !== item.id); await updateItinField(`days.${activeDay}.spots`, updated); } }} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl"><Trash2 size={20} /></button></div>
+                                <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all"><button onClick={(e) => { e.stopPropagation(); setEditingId(item.id); setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all"><Edit3 size={20} /></button><button onClick={async (e) => { e.stopPropagation(); if(confirm('刪除景點？')) { const updated = itineraryData.days[activeDay].spots.filter(s => s.id !== item.id); await updateItinField(`days.${activeDay}.spots`, updated); } }} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"><Trash2 size={20} /></button></div>
                               </div> )}
                           </div>
                         </div>
                       );
                     })}
+                    {(!itineraryData?.days?.[activeDay]?.spots?.length) && ( <div className="py-24 text-center border-4 border-dashed border-slate-50 rounded-[3rem]"><Calendar className="text-slate-100 mx-auto mb-6" size={80} /><p className="text-slate-300 font-black text-xl italic text-center">今天還沒有安排任何景點！</p></div> )}
                   </div>
                 </div>
               </div>
