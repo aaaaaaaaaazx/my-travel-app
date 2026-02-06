@@ -21,21 +21,22 @@ import {
   ArrowUp, ArrowDown, Edit3, Save, MapPin, Map as MapIcon,
   ArrowLeftRight, Settings2, RotateCcw, TrendingUp, DollarSign, CheckCircle2, Search, Circle, Coins, ListChecks,
   Sun, Cloud, CloudRain, CloudLightning, Snowflake, Smartphone, Shirt, Bath, Pill, FileText, Package,
-  Calculator, Delete, Equal
+  Calculator, Equal
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 簡易計算機：匯率頁面加入計算機功能，計算結果可一鍵套用至轉換器。
- * 2. 匯率選單優化：來源與目標幣別均加入國家中文名稱，方便辨識選擇。
- * 3. 顯示時間：版本標註加入具體修改時間點。
- * 4. 旅程清單管理：首頁清單支援刪除、編修與顯示建立日期。
- * 5. 滑動日期導覽：上方方形日期列加入精美可見的滑桿，支援流暢滑動。
- * 6. 結構化清單：完全復刻 6 大類別行李清單。
+ * 1. 完整計算機：匯率頁面下方直接配置完整計算機，支援一鍵套用計算結果。
+ * 2. 天氣優化：結束日期自動預設為旅程最後一天。
+ * 3. 匯率選單優化：來源與目標幣別均加入國家中文名稱，方便辨識選擇。
+ * 4. 顯示時間：版本標註加入具體修改時間點。
+ * 5. 旅程清單管理：首頁清單支援刪除、編修與顯示建立日期。
+ * 6. 滑動日期導覽：上方方形日期列加入精美可見的滑桿，支援流暢滑動。
+ * 7. 結構化清單：完全復刻 6 大類別行李清單。
  */
 
-const VERSION_INFO = "穩定版 V1.6 - 2026/02/06 10:45";
+const VERSION_INFO = "穩定版 V1.6 - 2026/02/06 10:58";
 
 // --- 精簡後的主要國家資料 ---
 const currencyNames = {
@@ -62,14 +63,10 @@ const CHECKLIST_CATEGORIES = [
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['空水壺或環保杯', '家中鑰匙', '眼罩', '外幣現金或信用卡', '耳塞', '頸枕'] }
 ];
 
-// --- Firebase 初始化安全保護 ---
+// --- Firebase 初始化 ---
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-    try {
-      return JSON.parse(__firebase_config);
-    } catch (e) {
-      console.error("Firebase Config Parse Error", e);
-    }
+    try { return JSON.parse(__firebase_config); } catch (e) { console.error(e); }
   }
   return {
     apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
@@ -240,7 +237,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
             <div className="space-y-3">
               {(groupedItems[cat.id] || []).map(item => (
                 <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-100 hover:border-blue-100 shadow-sm'}`}>
-                  <div className="flex items-center gap-3 flex-1"><button onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? {...i, completed: !i.completed} : i))} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${item.completed ? 'bg-green-500 border-green-500 text-white' : 'border-slate-200 hover:border-blue-500'}`}>{item.completed && <CheckCircle size={16} />}</button>
+                  <div className="flex items-center gap-3 flex-1"><button onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? {...i, completed: !i.completed} : i))} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100' : 'border-slate-200 hover:border-blue-500'}`}>{item.completed && <CheckCircle size={16} />}</button>
                     {editingId === item.id ? <input autoFocus value={tempText} onChange={e => setTempText(e.target.value)} onBlur={async () => { await updateItinField('checklist', checklist.map(i => i.id === item.id ? {...i, text: tempText} : i)); setEditingId(null); }} className="bg-blue-50 px-2 py-1 rounded font-bold outline-none flex-1 border-b-2 border-blue-500" /> : <span onClick={() => { setEditingId(item.id); setTempText(item.text); }} className={`text-sm font-bold cursor-text flex-1 ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>}
                   </div>
                   <button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
@@ -254,7 +251,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：匯率管理 (含顯性計算機與幣別國家顯示) ---
+// --- 子組件：匯率管理 (直接顯示計算機) ---
 const CurrencyMaster = () => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -264,9 +261,8 @@ const CurrencyMaster = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   
-  // 🌟 計算機狀態
+  // 計算機狀態
   const [calcDisplay, setCalcDisplay] = useState('0');
-  const [calcActive, setCalcActive] = useState(false);
 
   const [customRates, setCustomRates] = useState(() => {
     try { return JSON.parse(localStorage.getItem('custom_rates')) || {}; } catch(e) { return {}; }
@@ -290,13 +286,12 @@ const CurrencyMaster = () => {
     localStorage.setItem('use_custom_status', JSON.stringify(useCustom));
   }, [customRates, useCustom]);
 
-  // 🌟 計算機邏輯
+  // 計算機邏輯
   const handleCalcInput = (val) => {
     if (val === 'C') {
         setCalcDisplay('0');
     } else if (val === '=') {
         try {
-            // 安全簡易計算
             const result = Function(`'use strict'; return (${calcDisplay})`)();
             setCalcDisplay(String(Number(result).toFixed(2)));
         } catch (e) { setCalcDisplay('Error'); }
@@ -308,7 +303,6 @@ const CurrencyMaster = () => {
   const applyCalcToAmount = () => {
     const val = parseFloat(calcDisplay);
     if (!isNaN(val)) setAmount(val);
-    setCalcActive(false);
   };
 
   const handleSwap = () => {
@@ -332,26 +326,7 @@ const CurrencyMaster = () => {
 
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto">
-      {/* 🌟 計算機工具面板 (顯性展開區) */}
-      <div className={`overflow-hidden transition-all duration-500 ease-in-out ${calcActive ? 'max-h-[600px] mb-8 opacity-100' : 'max-h-0 opacity-0'}`}>
-          <div className="bg-slate-900 text-white p-8 rounded-[3.5rem] shadow-2xl border border-slate-800">
-              <div className="flex justify-between items-center mb-6 px-2">
-                  <h4 className="font-black text-xl flex items-center gap-2 text-blue-400"><Calculator size={24} /> 旅程小計算機</h4>
-                  <button onClick={() => setCalcActive(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"><X size={20}/></button>
-              </div>
-              <div className="bg-black/40 p-8 rounded-[2rem] mb-8 text-right shadow-inner border border-white/5 overflow-hidden">
-                  <span className="text-5xl font-black font-mono tracking-tighter text-white block truncate">{calcDisplay}</span>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                  {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (
-                      <button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 rounded-2xl font-black text-2xl transition-all shadow-sm ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/10 hover:bg-white/20'}`}>{btn}</button>
-                  ))}
-                  <button onClick={() => handleCalcInput('=')} className="col-span-2 py-6 bg-green-600 text-white rounded-2xl font-black text-2xl hover:bg-green-500 transition-all flex items-center justify-center gap-2 shadow-md"><Equal size={28}/> 計算結果</button>
-                  <button onClick={applyCalcToAmount} className="col-span-2 py-6 bg-white text-slate-900 rounded-2xl font-black text-xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2 shadow-xl active:scale-95">套用到金額</button>
-              </div>
-          </div>
-      </div>
-
+      {/* 匯率轉換主面板 */}
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden transition-all">
         <div className="p-10 md:p-14">
           <div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center">
@@ -359,22 +334,13 @@ const CurrencyMaster = () => {
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">輸入金額</label>
               <div className="relative">
                 <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"><DollarSign size={24} /></div>
-                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full pl-14 pr-16 py-5 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
-                {/* 🌟 顯性計算機入口按鈕 */}
-                <button 
-                  onClick={() => setCalcActive(!calcActive)} 
-                  className={`absolute right-14 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all ${calcActive ? 'text-blue-600 bg-blue-50' : 'text-slate-300 hover:text-blue-500 hover:bg-slate-100'}`} 
-                  title="開啟計算機"
-                >
-                  <Calculator size={22} />
-                </button>
+                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
                 <div className="absolute right-4 top-1/2 -translate-y-1/2">
                    <select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black cursor-pointer outline-none transition-all max-w-[150px]">
                      {majorCurrencies.map(curr => <option key={curr} value={curr}>{getFullDisplayName(curr)}</option>)}
                    </select>
                 </div>
               </div>
-              <p className="text-[10px] font-bold text-slate-400 mt-2 ml-1">{getFullDisplayName(baseCurrency)}</p>
             </div>
             
             <div className="flex justify-center md:col-span-1">
@@ -393,6 +359,29 @@ const CurrencyMaster = () => {
           </div>
         </div>
         <div className="bg-slate-50 border-t px-10 py-5 flex flex-wrap gap-4 justify-between items-center"><div className="flex items-center gap-2 text-xs font-bold text-slate-500"><TrendingUp size={16} className="text-green-500" /><span>{useCustom[targetCurrency] ? '目前使用手動匯率' : '全球市場即時匯率'}</span></div><div className="flex gap-4"><button onClick={() => setShowSettings(!showSettings)} className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black transition-all ${showSettings ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border text-slate-600 shadow-sm hover:border-blue-100'}`}><Settings2 size={16} /> 匯率管理</button><button onClick={fetchRates} className="text-xs font-black text-blue-600 p-2 hover:bg-blue-100 rounded-xl transition-all"><RotateCcw size={16} /></button></div></div>
+      </div>
+
+      {/* 🌟 完整計算機面板 (固定顯示於下方) */}
+      <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800 animate-fade-in">
+          <div className="flex justify-between items-center mb-8 px-2">
+              <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-900/20">
+                      <Calculator size={24} className="text-white" />
+                  </div>
+                  <h4 className="font-black text-2xl tracking-tight">旅程小計算機</h4>
+              </div>
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full border border-white/10">Travel Calc</span>
+          </div>
+          <div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right shadow-inner border border-white/5 overflow-hidden ring-1 ring-white/10">
+              <span className="text-6xl font-black font-mono tracking-tighter text-white block truncate">{calcDisplay}</span>
+          </div>
+          <div className="grid grid-cols-4 gap-4 md:gap-6">
+              {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (
+                  <button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-900/20' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>
+              ))}
+              <button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95"><Equal size={32}/> 計算結果</button>
+              <button onClick={applyCalcToAmount} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2 shadow-xl active:scale-95">套用到匯率輸入</button>
+          </div>
       </div>
       
       {showSettings && (
@@ -570,7 +559,7 @@ const App = () => {
               <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><ListChecks size={14}/> 清單</button>
               <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><Coins size={14}/> 匯率</button>
             </div>
-            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
+            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
           
           <main className="w-full max-w-5xl p-6 md:p-12 animate-fade-in">
