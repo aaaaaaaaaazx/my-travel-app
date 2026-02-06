@@ -20,21 +20,22 @@ import {
   Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, ArrowRight, Globe, Map as MapIcon, ChevronRight,
   Cloud, Sun, PlaneTakeoff, ArrowUp, ArrowDown, Edit3, Save, MapPin, 
   ChevronDown, ChevronUp, StickyNote, Eye, EyeOff, Image as ImageIcon, ExternalLink,
-  Smartphone, Shirt, Bath, Pill, FileText, Package, Calculator, Equal, ArrowLeft, ArrowRight,
+  Smartphone, Shirt, Bath, Pill, FileText, Package, Calculator, Equal, ArrowLeft,
   Wallet, Utensils, Home, Car, ShoppingBag, MoreHorizontal, Receipt
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 修正白屏：統整變數名稱與渲染守衛，確保資料未到時不崩潰。
+ * 1. 修正宣告錯誤：移除 lucide-react 中重複匯入的 ArrowRight，解決編譯失敗。
  * 2. 費用管理系統：支援分類統計與雲端存檔。
  * 3. 豐富媒體支援：備註加入圖片網址欄位，支援超連結自動偵測。
- * 4. 備註摺疊系統：預設隱藏行程備註，支援「全局開關」與「單獨點擊展開」。
- * 5. 計算機優化：運算精度維持小數點後 8 位數，加入運算安全保護。
+ * 4. 備註摺疊系統：預設隱藏行程備註，支援單獨點擊展開。
+ * 5. 穩定性修復：統整變數名稱與渲染守衛，確保資料未到時不崩潰。
+ * 6. 計算機優化：運算精度維持小數點後 8 位數。
  */
 
-const VERSION_INFO = "穩定版 V2.7 - 2026/02/06 21:12";
+const VERSION_INFO = "穩定版 V2.8 - 2026/02/06 21:35";
 
 // --- 配置資料 ---
 const currencyNames = {
@@ -349,6 +350,8 @@ const CurrencyMaster = ({ parentAmount, setParentAmount }) => {
     return (parentAmount * rate).toFixed(2);
   }, [parentAmount, targetCurrency, rates]);
 
+  const majorCurrencies = Object.keys(currencyNames);
+
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10">
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden transition-all p-8 md:p-14">
@@ -357,7 +360,7 @@ const CurrencyMaster = ({ parentAmount, setParentAmount }) => {
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">輸入金額</label>
             <div className="relative"><DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
               <input type="number" value={parentAmount} onChange={e => setParentAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{majorCurrencies.map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
             </div>
           </div>
           <div className="flex justify-center md:col-span-1"><button onClick={() => {const t = baseCurrency; setBaseCurrency(targetCurrency); setTargetCurrency(t);}} className="bg-blue-50 p-4 rounded-full text-blue-600 shadow-inner hover:bg-blue-600 hover:text-white transition-all duration-500 active:scale-90 group shadow-md"><ArrowLeftRight className="md:rotate-0 rotate-90" size={28} /></button></div>
@@ -380,7 +383,6 @@ const CurrencyMaster = ({ parentAmount, setParentAmount }) => {
               <button onClick={() => setParentAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all shadow-xl active:scale-95">套用到金額</button>
           </div>
       </div>
-      {loading && <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[200] flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /></div>}
     </div>
   );
 };
@@ -403,14 +405,14 @@ const App = () => {
   const [editingTripId, setEditingTripId] = useState(null);
   const [showAllNotes, setShowAllNotes] = useState(false); 
   const [expandedItems, setExpandedItems] = useState({}); 
-  const [currencyAmount, setCurrencyAmount] = useState(1); // 共享匯率金額
+  const [currencyAmount, setCurrencyAmount] = useState(1); 
 
   // 🎨 樣式與 Favicon 注入
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'premium-ui-engine-v2.7';
+    const style = document.createElement('style'); style.id = 'premium-ui-engine-v2.8';
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { min-height: 100vh !important; width: 100% !important; background-color: #f8fafc !important; font-family: 'Noto Sans TC', sans-serif !important; margin: 0; padding: 0; }
@@ -433,7 +435,7 @@ const App = () => {
     setFavicon();
   }, []);
 
-  // 🔐 登入邏輯
+  // 🔐 登入邏輯 (遵循 Rule 3)
   useEffect(() => {
     if (!auth) return;
     const initAuth = async () => {
@@ -447,14 +449,14 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 📊 資料監聽
+  // 📊 資料監聽 (遵循 Rule 1)
   useEffect(() => {
     if (!user || !db) return;
     const tripsRef = collection(db, 'artifacts', currentAppId, 'public', 'data', 'trips');
     const unsub = onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTrips(tripList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    }, (err) => console.error("Trips error", err));
+    }, (err) => console.error("Trips fetch error", err));
     return () => unsub();
   }, [user]);
 
@@ -467,7 +469,7 @@ const App = () => {
           setItineraryData({ days: data.days || {}, checklist: data.checklist || [], expenses: data.expenses || [] });
           setView('editor');
       }
-    }, (err) => console.error("Itinerary error", err));
+    }, (err) => console.error("Itinerary fetch error", err));
 
     const tripRef = doc(db, 'artifacts', currentAppId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, (docSnap) => { if (docSnap.exists()) setTripInfo(docSnap.data()); });
@@ -625,7 +627,10 @@ const App = () => {
                                 </div>
                                 <input placeholder="圖片網址..." value={editData.imageUrl || ''} onChange={e => setEditData({...editData, imageUrl: e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 outline-none text-xs font-bold" />
                                 <textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl h-24 bg-slate-50 outline-none text-sm" />
-                                <div className="flex justify-end gap-3"><button onClick={() => setEditingId(null)} className="text-sm font-bold text-slate-400 px-4">取消</button><button onClick={async () => { const spots = itineraryData.days[activeDay].spots.map(s => s.id === editingId ? editData : s); await updateItinField(`days.${activeDay}.spots`, spots); setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg">儲存</button></div>
+                                <div className="flex justify-end gap-3">
+                                  <button onClick={() => setEditingId(null)} className="text-sm font-bold text-slate-400 px-4">取消</button>
+                                  <button onClick={async () => { const spots = itineraryData.days[activeDay].spots.map(s => s.id === editingId ? editData : s); await updateItinField(`days.${activeDay}.spots`, spots); setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg">儲存</button>
+                                </div>
                               </div>
                             ) : ( <div className="flex justify-between items-start gap-4">
                                 <div className="space-y-4 flex-1">
