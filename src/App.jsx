@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
@@ -27,17 +27,16 @@ import {
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 穩定性修復：解決日期解析與計算機運算可能導致的白屏潰。
- * 2. 權限修復：遵循 Rule 1 & Rule 3，加入錯誤攔截防止 permission-denied。
+ * 1. 穩定性修復：解決初始化 Firebase 或資料存取可能導致的白屏問題。
+ * 2. 權限修復：嚴格遵循登入後監聽規則 (Rule 3)，加入錯誤處理回調。
  * 3. 備註摺疊系統：預設隱藏行程備註，支援「全局開關」與「單獨點擊展開」。
  * 4. 標籤圖案優化：注入旅遊圖示作為 Favicon (藍色飛機)。
- * 5. 日期調整：加入整天行程移動功能 (往前/往後移)。
- * 6. 計算機優化：運算精度維持小數點後 8 位數。
+ * 5. 計算機優化：運算精度維持小數點後 8 位數。
  */
 
-const VERSION_INFO = "穩定版 V2.2 - 2026/02/06 18:05";
+const VERSION_INFO = "穩定版 V2.3 - 2026/02/06 18:05";
 
-// --- 靜態配置與資料對照 ---
+// --- 主要國家資料 ---
 const currencyNames = {
   "TWD": "台灣 - 台幣", "USD": "美國 - 美金", "JPY": "日本 - 日圓", "KRW": "韓國 - 韓元",
   "THB": "泰國 - 泰銖", "VND": "越南 - 越南盾", "HKD": "香港 - 港幣", "EUR": "歐盟 - 歐元",
@@ -53,17 +52,30 @@ const CHECKLIST_CATEGORIES = [
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['空水壺或環保杯', '家中鑰匙', '眼罩', '外幣現金或信用卡', '耳塞', '頸枕'] }
 ];
 
-// --- 安全初始化 Firebase (遵循 Rule 1) ---
-let app, auth, db, appId, firebaseConfig;
-try {
-  firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-  appId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
-} catch (e) {
-  console.error("Firebase Init Error:", e);
-}
+// --- Firebase 初始化安全函式 ---
+const getFirebaseServices = () => {
+  try {
+    const config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
+      authDomain: "travel-yeh.firebaseapp.com",
+      projectId: "travel-yeh",
+      storageBucket: "travel-yeh.firebasestorage.app",
+      messagingSenderId: "62005891712",
+      appId: "1:62005891712:web:4653c17db0c38f981d0c65"
+    };
+    const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(config);
+    return {
+      auth: getAuth(firebaseApp),
+      db: getFirestore(firebaseApp),
+      appId: typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh'
+    };
+  } catch (e) {
+    console.error("Firebase Services Init Failed", e);
+    return { auth: null, db: null, appId: 'travel-yeh' };
+  }
+};
+
+const { auth, db, appId } = getFirebaseServices();
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
@@ -147,7 +159,7 @@ const WeatherMaster = ({ tripInfo }) => {
       <div className="bg-white p-8 md:p-12 rounded-[4rem] shadow-xl border border-slate-100">
         <h3 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-3"><Sun className="text-orange-500" /> 全球精準氣象查詢</h3>
         <form onSubmit={fetchWeather} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地</label><input required value={q.dest} onChange={e => setQ({...q, dest: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none font-bold shadow-inner transition-all" /></div>
+          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地</label><input required value={q.dest} onChange={e => setQ({...q, dest: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none font-bold shadow-inner" /></div>
           <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">開始日期</label><input required type="date" value={q.start} onChange={e => setQ({...q, start: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
           <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">結束日期</label><input required type="date" value={q.end} min={q.start} onChange={e => setQ({...q, end: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
           <button type="submit" disabled={loading} className="bg-blue-600 text-white h-[60px] rounded-3xl font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Search size={20}/>} 查詢</button>
@@ -157,10 +169,10 @@ const WeatherMaster = ({ tripInfo }) => {
       {results && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {results.daily.map(day => (
-            <div key={day.date} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg group">
+            <div key={day.date} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg group transition-transform hover:-translate-y-1">
                 <p className="text-[10px] font-black text-slate-300 mb-4">{day.date}</p>
                 <div className="flex justify-between items-start mb-6"><Sun size={48} className="text-orange-500" /><div className="text-right"><p className="text-3xl font-black text-slate-800">{Math.round(day.max)}°</p><p className="text-sm font-bold text-slate-300">{Math.round(day.min)}°</p></div></div>
-                <div className="bg-slate-50 p-4 rounded-2xl"><p className="font-black text-sm mb-1 text-blue-600">氣溫舒適</p><p className="text-[11px] text-slate-500 leading-relaxed font-bold">適合戶外探險，記得補充水分。</p></div>
+                <div className="bg-slate-50 p-4 rounded-2xl"><p className="font-black text-sm mb-1 text-blue-600">氣溫數據獲取成功</p><p className="text-[11px] text-slate-500 leading-relaxed font-bold">查看預報調整您的冒險計劃。</p></div>
             </div>
           ))}
         </div>
@@ -182,8 +194,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
     CHECKLIST_CATEGORIES.forEach(cat => groups[cat.id] = []);
     checklist.forEach(item => {
       const catId = item.categoryId || 'cat_others';
-      if (!groups[catId]) groups[catId] = [];
-      groups[catId].push(item);
+      if (groups[catId]) groups[catId].push(item);
     });
     return groups;
   }, [checklist]);
@@ -197,14 +208,14 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
 
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10">
-      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 text-center md:text-left">
+      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
         <div className="flex flex-col md:flex-row justify-between items-center md:items-end mb-4 gap-4"><div><h3 className="text-2xl font-black text-slate-800 tracking-tight">行李準備進度</h3><p className="text-sm font-bold text-slate-400">總共 {checklist.length} 項，已完成 {completedCount} 項</p></div><span className="text-6xl font-black text-blue-600 italic">{progress}%</span></div>
         <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progress}%` }}></div></div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {CHECKLIST_CATEGORIES.map(cat => (
           <div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-50 flex flex-col hover:shadow-2xl transition-all">
-            <div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-sm"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Plus size={20} /></button></div>
+            <div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shadow-sm"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500"><Plus size={20} /></button></div>
             {addingToCategory === cat.id && <div className="mb-4 flex gap-2 animate-fade-in"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddItem(cat.id)} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={() => handleAddItem(cat.id)} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>}
             <div className="space-y-3">
               {(groupedItems[cat.id] || []).map(item => (
@@ -243,15 +254,14 @@ const CurrencyMaster = () => {
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchRates(); }, [baseCurrency]);
+  useEffect(() => { if(auth) fetchRates(); }, [baseCurrency]);
 
-  // 🌟 安全計算邏輯 (避免 eval)
   const handleCalcInput = (val) => {
     if (val === 'C') setCalcDisplay('0');
     else if (val === '=') {
         try {
-            // 使用 Function 的嚴格模式做簡單安全解析
             const cleanDisplay = calcDisplay.replace(/[^-+*/.0-9]/g, '');
+            if (!cleanDisplay) { setCalcDisplay('0'); return; }
             const result = new Function(`return ${cleanDisplay}`)();
             setCalcDisplay(String(parseFloat(Number(result).toFixed(8))));
         } catch (e) { setCalcDisplay('Error'); }
@@ -294,7 +304,7 @@ const CurrencyMaster = () => {
           <div className="grid grid-cols-4 gap-4 md:gap-6">
               {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>))}
               <button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all active:scale-95"><Equal size={32}/></button>
-              <button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all shadow-xl active:scale-95">套用到輸入金額</button>
+              <button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all shadow-xl active:scale-95">套用到金額欄位</button>
           </div>
       </div>
       {loading && <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[200] flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /></div>}
@@ -322,12 +332,12 @@ const App = () => {
   const [showAllNotes, setShowAllNotes] = useState(false); 
   const [expandedItems, setExpandedItems] = useState({}); 
 
-  // 🎨 動態標籤圖案與樣式注入
+  // 🎨 樣式與 Favicon 注入
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'premium-ui-engine-v2.2';
+    const style = document.createElement('style'); style.id = 'premium-ui-engine-v2.3';
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { min-height: 100vh !important; width: 100% !important; background-color: #f8fafc !important; font-family: 'Noto Sans TC', sans-serif !important; }
@@ -350,8 +360,9 @@ const App = () => {
     setFavicon();
   }, []);
 
-  // 🔐 登入邏輯 (遵循 Rule 3)
+  // 🔐 登入邏輯
   useEffect(() => {
+    if (!auth) return;
     const initAuth = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -360,22 +371,26 @@ const App = () => {
           await signInAnonymously(auth);
         }
       } catch (e) {
+        console.error("Auth process error", e);
         await signInAnonymously(auth);
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setIsLoading(false); });
+    const unsubscribe = onAuthStateChanged(auth, (u) => { 
+      setUser(u); 
+      setIsLoading(false); 
+    });
     return () => unsubscribe();
   }, []);
 
-  // 📊 資料監聽 (遵循 Rule 1 & Rule 3)
+  // 📊 資料監聽
   useEffect(() => {
     if (!user || !db) return;
     const tripsRef = collection(db, 'artifacts', appId, 'public', 'data', 'trips');
     const unsub = onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTrips(tripList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    }, (err) => { console.error("Firestore Listen Error (Trips):", err); });
+    }, (err) => { console.error("Trips fetch error:", err); });
     return () => unsub();
   }, [user]);
 
@@ -385,7 +400,7 @@ const App = () => {
     const unsubItin = onSnapshot(itinRef, (docSnap) => {
       if (docSnap.exists()) setItineraryData({ days: docSnap.data().days || {}, checklist: docSnap.data().checklist || [] });
       setView('editor');
-    }, (err) => { console.error("Firestore Listen Error (Itin):", err); });
+    }, (err) => { console.error("Itinerary fetch error:", err); });
 
     const tripRef = doc(db, 'artifacts', appId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, (docSnap) => {
@@ -396,14 +411,17 @@ const App = () => {
 
   const updateItinField = async (field, value) => {
     if (!user || !tripId || !db) return;
-    try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId), { [field]: value }); } catch (err) { console.error(err); }
+    try { 
+      const itinRef = doc(db, 'artifacts', appId, 'public', 'data', 'itineraries', tripId);
+      await updateDoc(itinRef, { [field]: value }); 
+    } catch (err) { console.error(err); }
   };
 
   const moveDay = async (direction) => {
     if (!user || !tripId || !db) return;
     const days = { ...itineraryData.days };
     const targetDay = activeDay + direction;
-    if (targetDay < 1 || targetDay > parseInt(tripInfo.duration)) return;
+    if (targetDay < 1 || targetDay > parseInt(tripInfo.duration || "0")) return;
     const currentData = days[activeDay];
     const targetData = days[targetDay];
     days[activeDay] = targetData;
@@ -460,14 +478,14 @@ const App = () => {
       ) : (
         <div className="w-full flex flex-col items-center pb-24 animate-fade-in">
           <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
-            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><div className="p-2 bg-blue-600 text-white rounded-2xl shadow-lg"><Plane size={24} className="rotate-45" /></div><span className="tracking-tighter uppercase font-black">Traveler</span></div>
+            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><div className="p-2 bg-blue-600 text-white rounded-2xl shadow-lg"><Plane size={24} className="rotate-45" /></div><span className="tracking-tighter uppercase">Traveler</span></div>
             <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
               <button onClick={() => setActiveTab('itinerary')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'itinerary' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>行程</button>
               <button onClick={() => setActiveTab('weather')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'weather' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>天氣</button>
               <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>清單</button>
               <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>匯率</button>
             </div>
-            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
+            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
           
           <main className="w-full max-w-5xl p-6 md:p-12">
