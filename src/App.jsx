@@ -27,16 +27,14 @@ import {
 /**
  * 🏆 Travel Planner - 最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 完整計算機：匯率頁面下方直接配置完整計算機，支援一鍵套用計算結果。
- * 2. 天氣優化：結束日期自動預設為旅程最後一天。
- * 3. 匯率選單優化：來源與目標幣別均加入國家中文名稱，方便辨識選擇。
- * 4. 顯示時間：版本標註加入具體修改時間點。
- * 5. 旅程清單管理：首頁清單支援刪除、編修與顯示建立日期。
- * 6. 滑動日期導覽：上方方形日期列加入精美可見的滑桿，支援流暢滑動。
- * 7. 結構化清單：完全復刻 6 大類別行李清單。
+ * 1. 專屬標記：首頁歡迎語加入「彥麟製作」。
+ * 2. 計算機優化：運算精度維持小數點後 8 位數，支援高精度試算。
+ * 3. 完整計算機：匯率頁面下方配置完整實體計算機，支援一鍵套用。
+ * 4. 天氣優化：結束日期自動預設為旅程最後一天。
+ * 5. 匯率選單優化：來源與目標幣別均加入國家中文名稱。
  */
 
-const VERSION_INFO = "穩定版 V1.6 - 2026/02/06 10:58";
+const VERSION_INFO = "穩定版 V1.6 - 2026/02/06 11:35";
 
 // --- 精簡後的主要國家資料 ---
 const currencyNames = {
@@ -63,10 +61,14 @@ const CHECKLIST_CATEGORIES = [
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['空水壺或環保杯', '家中鑰匙', '眼罩', '外幣現金或信用卡', '耳塞', '頸枕'] }
 ];
 
-// --- Firebase 初始化 ---
+// --- Firebase 初始化安全保護 ---
 const getFirebaseConfig = () => {
   if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-    try { return JSON.parse(__firebase_config); } catch (e) { console.error(e); }
+    try {
+      return JSON.parse(__firebase_config);
+    } catch (e) {
+      console.error("Firebase Config Parse Error", e);
+    }
   }
   return {
     apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
@@ -84,7 +86,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const appId = 'travel-yeh';
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-yeh';
+const appId = rawAppId.replace(/\//g, '_');
 const apiKey = ""; 
 
 // --- 工具函數 ---
@@ -237,7 +240,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
             <div className="space-y-3">
               {(groupedItems[cat.id] || []).map(item => (
                 <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-100 hover:border-blue-100 shadow-sm'}`}>
-                  <div className="flex items-center gap-3 flex-1"><button onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? {...i, completed: !i.completed} : i))} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-lg shadow-green-100' : 'border-slate-200 hover:border-blue-500'}`}>{item.completed && <CheckCircle size={16} />}</button>
+                  <div className="flex items-center gap-3 flex-1"><button onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? {...i, completed: !i.completed} : i))} className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all ${item.completed ? 'bg-green-500 border-green-500 text-white' : 'border-slate-200 hover:border-blue-500'}`}>{item.completed && <CheckCircle size={16} />}</button>
                     {editingId === item.id ? <input autoFocus value={tempText} onChange={e => setTempText(e.target.value)} onBlur={async () => { await updateItinField('checklist', checklist.map(i => i.id === item.id ? {...i, text: tempText} : i)); setEditingId(null); }} className="bg-blue-50 px-2 py-1 rounded font-bold outline-none flex-1 border-b-2 border-blue-500" /> : <span onClick={() => { setEditingId(item.id); setTempText(item.text); }} className={`text-sm font-bold cursor-text flex-1 ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>}
                   </div>
                   <button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
@@ -251,7 +254,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：匯率管理 (直接顯示計算機) ---
+// --- 子組件：匯率管理 (高精度 8 位版) ---
 const CurrencyMaster = () => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -286,14 +289,15 @@ const CurrencyMaster = () => {
     localStorage.setItem('use_custom_status', JSON.stringify(useCustom));
   }, [customRates, useCustom]);
 
-  // 計算機邏輯
+  // 🌟 計算機邏輯 (精度提升至 8 位)
   const handleCalcInput = (val) => {
     if (val === 'C') {
         setCalcDisplay('0');
     } else if (val === '=') {
         try {
             const result = Function(`'use strict'; return (${calcDisplay})`)();
-            setCalcDisplay(String(Number(result).toFixed(2)));
+            const formattedResult = parseFloat(Number(result).toFixed(8));
+            setCalcDisplay(String(formattedResult));
         } catch (e) { setCalcDisplay('Error'); }
     } else {
         setCalcDisplay(prev => prev === '0' || prev === 'Error' ? val : prev + val);
@@ -361,7 +365,7 @@ const CurrencyMaster = () => {
         <div className="bg-slate-50 border-t px-10 py-5 flex flex-wrap gap-4 justify-between items-center"><div className="flex items-center gap-2 text-xs font-bold text-slate-500"><TrendingUp size={16} className="text-green-500" /><span>{useCustom[targetCurrency] ? '目前使用手動匯率' : '全球市場即時匯率'}</span></div><div className="flex gap-4"><button onClick={() => setShowSettings(!showSettings)} className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black transition-all ${showSettings ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border text-slate-600 shadow-sm hover:border-blue-100'}`}><Settings2 size={16} /> 匯率管理</button><button onClick={fetchRates} className="text-xs font-black text-blue-600 p-2 hover:bg-blue-100 rounded-xl transition-all"><RotateCcw size={16} /></button></div></div>
       </div>
 
-      {/* 🌟 完整計算機面板 (固定顯示於下方) */}
+      {/* 🌟 完整計算機面板 (精度 8 位) */}
       <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800 animate-fade-in">
           <div className="flex justify-between items-center mb-8 px-2">
               <div className="flex items-center gap-3">
@@ -370,16 +374,16 @@ const CurrencyMaster = () => {
                   </div>
                   <h4 className="font-black text-2xl tracking-tight">旅程小計算機</h4>
               </div>
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full border border-white/10">Travel Calc</span>
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white/5 px-3 py-1 rounded-full border border-white/10">Precision 8-Digit</span>
           </div>
           <div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right shadow-inner border border-white/5 overflow-hidden ring-1 ring-white/10">
-              <span className="text-6xl font-black font-mono tracking-tighter text-white block truncate">{calcDisplay}</span>
+              <span className="text-6xl font-black font-mono tracking-tighter text-white block truncate leading-tight">{calcDisplay}</span>
           </div>
           <div className="grid grid-cols-4 gap-4 md:gap-6">
               {['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (
-                  <button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-900/20' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>
+                  <button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-50' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>
               ))}
-              <button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-900/20 active:scale-95"><Equal size={32}/> 計算結果</button>
+              <button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95"><Equal size={32}/> 計算結果</button>
               <button onClick={applyCalcToAmount} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2 shadow-xl active:scale-95">套用到匯率輸入</button>
           </div>
       </div>
@@ -460,7 +464,7 @@ const App = () => {
     return onSnapshot(tripsRef, (snapshot) => {
       const tripList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTrips(tripList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    }, err => { if (err.code === 'permission-denied') setAiStatus({ type: 'error', message: '存取權限受限。' }); });
+    }, err => { if (err.code === 'permission-denied') console.error("Permission denied"); });
   }, [user]);
 
   useEffect(() => {
@@ -522,7 +526,7 @@ const App = () => {
     setTripInfo({ country: trip.country, city: trip.city, startDate: trip.startDate, duration: trip.duration });
   };
 
-  if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-black italic tracking-widest leading-none">正在同步權限與資料...</p></div>;
+  if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-black italic tracking-widest leading-none">同步雲端資料中...</p></div>;
 
   return (
     <div className="w-full flex flex-col items-center min-h-screen">
@@ -530,7 +534,7 @@ const App = () => {
 
       {view === 'home' ? (
         <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-fade-in">
-          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase leading-none">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的冒險之旅</p></div>
+          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase leading-none">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center">找回您的冒險之旅-彥麟製作</p></div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start">
             <div className="space-y-6"><h3 className="text-xl font-black text-slate-800 flex items-center gap-2">{editingTripId ? <Edit3 className="text-blue-600" /> : <Plus className="text-blue-600" />} {editingTripId ? '編輯旅程' : '建立新旅程'}</h3>
               <form onSubmit={handleCreateOrUpdate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-white shadow-slate-200">
@@ -559,7 +563,7 @@ const App = () => {
               <button onClick={() => setActiveTab('checklist')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'checklist' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><ListChecks size={14}/> 清單</button>
               <button onClick={() => setActiveTab('currency')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'currency' ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400'}`}><Coins size={14}/> 匯率</button>
             </div>
-            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city}</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
+            <div className="text-right"><div className="font-black text-slate-800 text-xl leading-none">{tripInfo.city} 之旅</div><div className="text-[11px] text-slate-400 font-bold uppercase mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-full">{tripInfo.startDate}</div></div>
           </nav>
           
           <main className="w-full max-w-5xl p-6 md:p-12 animate-fade-in">
