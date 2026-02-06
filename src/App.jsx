@@ -27,15 +27,16 @@ import {
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準穩定版 (2026.02.06)
  * ------------------------------------------------
- * 1. 修正宣告錯誤：移除 lucide-react 中重複匯入的 ArrowRight，解決編譯失敗。
- * 2. 費用管理系統：支援分類統計與雲端存檔。
- * 3. 豐富媒體支援：備註加入圖片網址欄位，支援超連結自動偵測。
- * 4. 備註摺疊系統：預設隱藏行程備註，支援單獨點擊展開。
- * 5. 穩定性修復：統整變數名稱與渲染守衛，確保資料未到時不崩潰。
- * 6. 計算機優化：運算精度維持小數點後 8 位數。
+ * 修正內容：
+ * 1. 修復編譯錯誤：移除重複匯入的 ArrowRight 符號。
+ * 2. 穩定性修復：強化渲染守衛，防止因 Firebase 資料結構未就緒導致的白屏。
+ * 3. 費用管理系統：支援分類統計與雲端存檔。
+ * 4. 豐富媒體支援：備註支援圖片網址顯示與自動超連結辨識。
+ * 5. 備註摺疊系統：預設隱藏行程備註，支援單獨點擊展開。
+ * 6. 計算機優化：精度維持小數點後 8 位數。
  */
 
-const VERSION_INFO = "穩定版 V2.8 - 2026/02/06 21:35";
+const VERSION_INFO = "穩定版 V2.9 - 2026/02/06 21:40";
 
 // --- 配置資料 ---
 const currencyNames = {
@@ -62,10 +63,11 @@ const CHECKLIST_CATEGORIES = [
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['空水壺或環保杯', '家中鑰匙', '眼罩', '外幣現金或信用卡', '耳塞', '頸枕'] }
 ];
 
-// --- Firebase 安全初始化 ---
+// --- Firebase 安全初始化邏輯 ---
 const getFirebaseServices = () => {
   try {
-    const config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+    const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+    const config = configStr ? JSON.parse(configStr) : {
       apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
       authDomain: "travel-yeh.firebaseapp.com",
       projectId: "travel-yeh",
@@ -132,7 +134,9 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('food');
 
-  const totalAmount = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+  const totalAmount = useMemo(() => {
+      return expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+  }, [expenses]);
   
   const categoryTotals = useMemo(() => {
     const totals = {};
@@ -150,11 +154,6 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
     setItem(''); setAmount('');
   };
 
-  const deleteExpense = async (id) => {
-    const updated = expenses.filter(e => e.id !== id);
-    await updateItinField('expenses', updated);
-  };
-
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -162,7 +161,7 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
             <h3 className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2 ml-1">旅程總花費</h3>
             <div className="flex items-baseline gap-2">
                 <span className="text-6xl font-black text-slate-900 tracking-tighter">${totalAmount.toLocaleString()}</span>
-                <span className="text-slate-300 font-bold">TWD</span>
+                <span className="text-slate-300 font-bold uppercase">twd</span>
             </div>
         </div>
         <div className="bg-slate-900 p-8 rounded-[3rem] shadow-xl text-white">
@@ -189,15 +188,15 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
           <form onSubmit={handleAddExpense} className="flex flex-wrap md:flex-nowrap gap-4 items-end">
               <div className="flex-1 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">費用說明</label>
-                  <input required placeholder="如：晚餐..." value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" />
+                  <input required placeholder="如：晚餐..." value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner transition-all" />
               </div>
               <div className="w-full md:w-48 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">金額</label>
-                  <input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" />
+                  <input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner transition-all" />
               </div>
               <div className="w-full md:w-40 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">分類</label>
-                  <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-black outline-none shadow-inner">
+                  <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-black outline-none shadow-inner cursor-pointer">
                       {EXPENSE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
               </div>
@@ -206,7 +205,7 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
       </div>
 
       <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden">
-          <table className="w-full text-left">
+          <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black">
                   <tr>
                       <th className="px-8 py-5">項目</th>
@@ -228,7 +227,10 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
                               </td>
                               <td className="px-8 py-5 text-right font-mono font-black text-slate-800 text-lg">${parseFloat(exp.amount).toLocaleString()}</td>
                               <td className="px-8 py-5 text-center">
-                                  <button onClick={() => deleteExpense(exp.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                                  <button onClick={async () => {
+                                      const updated = expenses.filter(e => e.id !== exp.id);
+                                      await updateItinField('expenses', updated);
+                                  }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
                               </td>
                           </tr>
                       );
@@ -281,8 +283,11 @@ const WeatherMaster = ({ tripInfo }) => {
       const weatherData = await weatherRes.json();
       setResults({
         location: name,
-        daily: weatherData.daily.time.map((time, i) => ({
-          date: time, max: weatherData.daily.temperature_2m_max[i], min: weatherData.daily.temperature_2m_min[i], code: weatherData.daily.weather_code[i]
+        daily: (weatherData.daily?.time || []).map((time, i) => ({
+          date: time, 
+          max: weatherData.daily.temperature_2m_max[i], 
+          min: weatherData.daily.temperature_2m_min[i], 
+          code: weatherData.daily.weather_code[i]
         }))
       });
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -305,7 +310,7 @@ const WeatherMaster = ({ tripInfo }) => {
             <div key={day.date} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg group">
                 <p className="text-[10px] font-black text-slate-300 mb-4">{day.date}</p>
                 <div className="flex justify-between items-start mb-6"><Sun size={48} className="text-orange-500" /><div className="text-right"><p className="text-3xl font-black text-slate-800">{Math.round(day.max)}°</p><p className="text-sm font-bold text-slate-300">{Math.round(day.min)}°</p></div></div>
-                <div className="bg-slate-50 p-4 rounded-2xl"><p className="font-black text-sm mb-1 text-blue-600">氣溫資訊</p><p className="text-[11px] text-slate-500 leading-relaxed font-bold tracking-tight">查看預報調整行程。</p></div>
+                <div className="bg-slate-50 p-4 rounded-2xl"><p className="font-black text-sm mb-1 text-blue-600">氣溫數據</p><p className="text-[11px] text-slate-500 leading-relaxed font-bold tracking-tight">根據預報調整行程細節。</p></div>
             </div>
           ))}
         </div>
@@ -350,8 +355,6 @@ const CurrencyMaster = ({ parentAmount, setParentAmount }) => {
     return (parentAmount * rate).toFixed(2);
   }, [parentAmount, targetCurrency, rates]);
 
-  const majorCurrencies = Object.keys(currencyNames);
-
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10">
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden transition-all p-8 md:p-14">
@@ -360,7 +363,7 @@ const CurrencyMaster = ({ parentAmount, setParentAmount }) => {
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">輸入金額</label>
             <div className="relative"><DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
               <input type="number" value={parentAmount} onChange={e => setParentAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{majorCurrencies.map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
             </div>
           </div>
           <div className="flex justify-center md:col-span-1"><button onClick={() => {const t = baseCurrency; setBaseCurrency(targetCurrency); setTargetCurrency(t);}} className="bg-blue-50 p-4 rounded-full text-blue-600 shadow-inner hover:bg-blue-600 hover:text-white transition-all duration-500 active:scale-90 group shadow-md"><ArrowLeftRight className="md:rotate-0 rotate-90" size={28} /></button></div>
@@ -383,6 +386,7 @@ const CurrencyMaster = ({ parentAmount, setParentAmount }) => {
               <button onClick={() => setParentAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all shadow-xl active:scale-95">套用到金額</button>
           </div>
       </div>
+      {loading && <div className="fixed inset-0 bg-white/60 backdrop-blur-md z-[200] flex flex-col items-center justify-center"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /></div>}
     </div>
   );
 };
@@ -412,7 +416,7 @@ const App = () => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'premium-ui-engine-v2.8';
+    const style = document.createElement('style'); style.id = 'premium-ui-engine-v2.9';
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { min-height: 100vh !important; width: 100% !important; background-color: #f8fafc !important; font-family: 'Noto Sans TC', sans-serif !important; margin: 0; padding: 0; }
@@ -440,12 +444,20 @@ const App = () => {
     if (!auth) return;
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token);
-        else await signInAnonymously(auth);
-      } catch (e) { await signInAnonymously(auth); }
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (e) {
+        await signInAnonymously(auth);
+      }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setIsLoading(false); });
+    const unsubscribe = onAuthStateChanged(auth, (u) => { 
+        setUser(u); 
+        setIsLoading(false); 
+    });
     return () => unsubscribe();
   }, []);
 
@@ -466,7 +478,11 @@ const App = () => {
     const unsubItin = onSnapshot(itinRef, (docSnap) => {
       if (docSnap.exists()) {
           const data = docSnap.data();
-          setItineraryData({ days: data.days || {}, checklist: data.checklist || [], expenses: data.expenses || [] });
+          setItineraryData({ 
+              days: data.days || {}, 
+              checklist: data.checklist || [], 
+              expenses: data.expenses || [] 
+          });
           setView('editor');
       }
     }, (err) => console.error("Itinerary fetch error", err));
@@ -485,7 +501,8 @@ const App = () => {
     if (!user || !tripId || !db) return;
     const days = { ...itineraryData.days };
     const targetDay = activeDay + direction;
-    if (targetDay < 1 || targetDay > parseInt(tripInfo.duration || "0")) return;
+    const dur = parseInt(tripInfo.duration || "0");
+    if (targetDay < 1 || targetDay > dur) return;
     const currentData = days[activeDay];
     const targetData = days[targetDay];
     days[activeDay] = targetData;
@@ -540,7 +557,7 @@ const App = () => {
       ) : (
         <div className="w-full flex flex-col items-center pb-24 animate-fade-in">
           <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50">
-            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><div className="p-2 bg-blue-600 text-white rounded-2xl shadow-lg"><Plane size={24} className="rotate-45" /></div><span className="tracking-tighter uppercase">Traveler</span></div>
+            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><div className="p-2 bg-blue-600 text-white rounded-2xl shadow-lg"><Plane size={24} className="rotate-45" /></div><span className="tracking-tighter uppercase font-black">Traveler</span></div>
             <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
               <button onClick={() => setActiveTab('itinerary')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'itinerary' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>行程</button>
               <button onClick={() => setActiveTab('weather')} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === 'weather' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>天氣</button>
@@ -558,7 +575,7 @@ const App = () => {
                   {Object.keys(itineraryData?.days || {}).map(day => (
                     <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
                       <span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span>
-                      <span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day)).slice(5)}</span>
+                      <span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day)).split('/').slice(1).join('/')}</span>
                     </button>
                   ))}
                 </div>
@@ -574,7 +591,7 @@ const App = () => {
                     </div>
                     <div className="flex-1">
                       <span className="text-lg text-slate-400 font-bold ml-1 mb-1 block">({getFormattedDate(tripInfo.startDate, activeDay)} {getDayOfWeek(tripInfo.startDate, activeDay)})</span>
-                      <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full" placeholder="今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} />
+                      <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full transition-all" placeholder="今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} />
                     </div>
                   </div>
                   <div className="flex justify-center md:justify-start">
@@ -625,7 +642,7 @@ const App = () => {
                                   <input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none" />
                                   <input value={editData.spot} onChange={e => setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none" />
                                 </div>
-                                <input placeholder="圖片網址..." value={editData.imageUrl || ''} onChange={e => setEditData({...editData, imageUrl: e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 outline-none text-xs font-bold" />
+                                <input placeholder="修改圖片網址..." value={editData.imageUrl || ''} onChange={e => setEditData({...editData, imageUrl: e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 outline-none text-xs font-bold" />
                                 <textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl h-24 bg-slate-50 outline-none text-sm" />
                                 <div className="flex justify-end gap-3">
                                   <button onClick={() => setEditingId(null)} className="text-sm font-bold text-slate-400 px-4">取消</button>
