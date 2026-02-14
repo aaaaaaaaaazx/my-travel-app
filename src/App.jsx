@@ -29,14 +29,14 @@ import {
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.14)
  * ------------------------------------------------
- * V4.1 資料恢復與穩定性最終版：
- * 1. 資料恢復：將 fAppId 鎖定為 'travel-yeh'，找回您原本儲存的行程與費用。
- * 2. 徹底解決白屏：優化 renderTextWithLinks 的邏輯，移除導致編譯失敗的重複定義。
- * 3. 編修功能加固：確保 spots 與 checklist 的更新路徑與事件冒泡處理正確。
- * 4. 旗艦功能全整合：匯率互換、費用統計、天氣表單、8位數計算機、行李清單編修。
+ * V4.2 媒體與連結強化版：
+ * 1. 景點圖片支援：新增與編輯模式皆支援圖片網址，並具備點擊放大檢視。
+ * 2. 備註連結偵測：自動識別備註內的 https 連結並轉為可點擊標籤。
+ * 3. 資料恢復機制：固定 fAppId 為 'travel-yeh' 以銜接原有資料。
+ * 4. 編輯與清單：全面修復 Spots 與 Checklist 的修改儲存功能。
  */
 
-const VERSION_INFO = "旗艦穩定版 V4.1 - 2026/02/14 18:40";
+const VERSION_INFO = "旗艦穩定版 V4.2 - 2026/02/14 18:45";
 
 // --- 靜態資料配置 ---
 const currencyNames = {
@@ -101,6 +101,7 @@ const getDayOfWeek = (baseDate, dayOffset) => {
 
 const renderTextWithLinks = (text) => {
   if (!text) return null;
+  // 建立網址偵測正則
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return parts.map((part, i) => {
@@ -289,7 +290,7 @@ const WeatherMaster = ({ tripInfo }) => {
   );
 };
 
-// --- 子組件：匯率管理 (安全運算版) ---
+// --- 子組件：匯率管理 ---
 const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -345,14 +346,14 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
 
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10 px-4">
-      <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden p-8 md:p-14">
+      <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden p-8 md:p-14 transition-all">
         <div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center">
           <div className="md:col-span-3">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1 block">輸入金額</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">輸入金額</label>
             <div className="relative">
               <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
               <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
             </div>
           </div>
           <div className="flex justify-center md:col-span-1">
@@ -397,7 +398,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：行李清單 (互動修改版) ---
+// --- 子組件：行李清單 ---
 const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   const checklist = Array.isArray(itineraryData?.checklist) ? itineraryData.checklist : [];
   const [newItemText, setNewItemText] = useState('');
@@ -462,7 +463,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
                    const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id };
                    await updateItinField('checklist', [...checklist, newItem]);
                    setNewItemText(''); setAddingToCategory(null);
-                }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button>
+                }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md shadow-blue-100"><CheckCircle2 size={18}/></button>
               </div>
             )}
             <div className="space-y-3">
@@ -472,11 +473,10 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
                     <div className="flex items-center gap-2 flex-1">
                       <input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" />
                       <button onClick={() => saveEdit(item.id)} className="text-blue-600 hover:bg-blue-50 p-1 rounded-lg transition-colors"><Check size={16}/></button>
-                      <button onClick={() => setEditingItemId(null)} className="text-slate-400 hover:bg-slate-100 p-1 rounded-lg transition-colors"><X size={16}/></button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 flex-1">
-                      <div onClick={() => toggleItem(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white' : 'border-slate-200 hover:border-blue-300'}`}>
+                      <div onClick={() => toggleItem(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md shadow-green-100' : 'border-slate-200 hover:border-blue-300'}`}>
                         {item.completed && <CheckCircle size={14} />}
                       </div>
                       <span onClick={() => toggleItem(item.id)} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>
@@ -618,7 +618,7 @@ const App = () => {
     e.preventDefault(); if (!user) return; setIsLoading(true);
     const newId = crypto.randomUUID();
     const days = {};
-    for (let i = 1; i <= Math.max(1, parseInt(tripInfo.duration)); i++) days[i] = { spots: [], title: '' };
+    for (let i = 1; i <= Math.max(1, parseInt(tripInfo.duration)); i++) days[i] = { spots: [], flights: [], weather: null };
     try {
       await setDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'trips', newId), { ...tripInfo, creator: user.uid, createdAt: new Date().toISOString() });
       await setDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'itineraries', newId), { days, checklist: [], expenses: [], customRates: {}, useCustom: {} });
