@@ -29,15 +29,14 @@ import {
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.14)
  * ------------------------------------------------
- * V4.0 旗艦修正版：
- * 1. 徹底解決白屏：修正正則表達式語法、移除重複圖示匯入、補全遺漏定義。
- * 2. 行程編輯修復：優化 spots 更新邏輯，解決編輯按鈕失效與互動衝突。
- * 3. 清單編輯修復：支援行李清單項目文字修改與雲端同步。
- * 4. 功能對接：匯率互換、費用統計、天氣表單查詢、8位數高精度計算機。
- * 5. 安全穩定：遵循 Rule 1 & 3 權限規範。
+ * V4.1 資料恢復與穩定性最終版：
+ * 1. 資料恢復：將 fAppId 鎖定為 'travel-yeh'，找回您原本儲存的行程與費用。
+ * 2. 徹底解決白屏：優化 renderTextWithLinks 的邏輯，移除導致編譯失敗的重複定義。
+ * 3. 編修功能加固：確保 spots 與 checklist 的更新路徑與事件冒泡處理正確。
+ * 4. 旗艦功能全整合：匯率互換、費用統計、天氣表單、8位數計算機、行李清單編修。
  */
 
-const VERSION_INFO = "旗艦穩定版 V4.0 - 2026/02/14 19:15";
+const VERSION_INFO = "旗艦穩定版 V4.1 - 2026/02/14 18:40";
 
 // --- 靜態資料配置 ---
 const currencyNames = {
@@ -76,7 +75,8 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
 const appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const fAuth = getAuth(appInstance);
 const fDb = getFirestore(appInstance);
-const fAppId = (typeof __app_id !== 'undefined' ? __app_id : 'travel-planner').replace(/\//g, '_');
+// 💡 重要：鎖定 appId 為 travel-yeh 以恢復原始資料
+const fAppId = 'travel-yeh';
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
@@ -104,7 +104,7 @@ const renderTextWithLinks = (text) => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return parts.map((part, i) => {
-    if (urlRegex.test(part)) {
+    if (part.match(/^https?:\/\//)) {
       return (
         <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline inline-flex items-center gap-1 break-all" onClick={e => e.stopPropagation()}>
           {part} <ExternalLink size={12} />
@@ -203,7 +203,9 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
                           <td className="px-8 py-5"><span className="px-3 py-1 rounded-full bg-slate-100 text-[10px] font-black uppercase text-slate-500">{exp.category}</span></td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">${parseFloat(exp.amount).toLocaleString()}</td>
                           <td className="px-8 py-5 text-center">
-                              <button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                              <button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                <Trash2 size={18}/>
+                              </button>
                           </td>
                       </tr>
                   )) : (
@@ -287,7 +289,7 @@ const WeatherMaster = ({ tripInfo }) => {
   );
 };
 
-// --- 子組件：匯率管理 ---
+// --- 子組件：匯率管理 (安全運算版) ---
 const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -349,8 +351,8 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1 block">輸入金額</label>
             <div className="relative">
               <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
-              <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none text-2xl font-black shadow-inner" />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div>
+              <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
             </div>
           </div>
           <div className="flex justify-center md:col-span-1">
@@ -360,9 +362,9 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
           </div>
           <div className="md:col-span-3">
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">轉換結果</label>
-            <div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl">
+            <div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl shadow-blue-100">
               <div><span className="text-3xl font-black tracking-tight">{convertedAmount}</span><p className="text-blue-100 text-[10px] mt-1 font-bold">{currencyNames[targetCurrency]}</p></div>
-              <select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select>
+              <select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black outline-none">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select>
             </div>
           </div>
         </div>
@@ -395,7 +397,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：行李清單 ---
+// --- 子組件：行李清單 (互動修改版) ---
 const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   const checklist = Array.isArray(itineraryData?.checklist) ? itineraryData.checklist : [];
   const [newItemText, setNewItemText] = useState('');
@@ -470,10 +472,11 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
                     <div className="flex items-center gap-2 flex-1">
                       <input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" />
                       <button onClick={() => saveEdit(item.id)} className="text-blue-600 hover:bg-blue-50 p-1 rounded-lg transition-colors"><Check size={16}/></button>
+                      <button onClick={() => setEditingItemId(null)} className="text-slate-400 hover:bg-slate-100 p-1 rounded-lg transition-colors"><X size={16}/></button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 flex-1">
-                      <div onClick={() => toggleItem(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md shadow-green-100' : 'border-slate-200 hover:border-blue-300'}`}>
+                      <div onClick={() => toggleItem(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white' : 'border-slate-200 hover:border-blue-300'}`}>
                         {item.completed && <CheckCircle size={14} />}
                       </div>
                       <span onClick={() => toggleItem(item.id)} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>
@@ -510,8 +513,9 @@ const App = () => {
   const [aiStatus, setAiStatus] = useState({ type: '', message: '' });
   const [showAllNotes, setShowAllNotes] = useState(false); 
   const [expandedItems, setExpandedItems] = useState({}); 
+  const [currencyAmount, setCurrencyAmount] = useState(1); 
 
-  // 🎨 注入樣式與 Favicon
+  // 🎨 注入樣式
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
@@ -536,7 +540,7 @@ const App = () => {
     setFavicon();
   }, []);
 
-  // 🔐 身份驗證流程 (遵循 Rule 3)
+  // 🔐 身份驗證流程
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -558,7 +562,7 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 📊 資料庫監聽 (遵循 Rule 1)
+  // 📊 資料庫監聽
   useEffect(() => {
     if (!user || !fDb) return;
     const tripsRef = collection(fDb, 'artifacts', fAppId, 'public', 'data', 'trips');
@@ -584,7 +588,7 @@ const App = () => {
           });
           setView('editor');
       }
-    }, (err) => console.error("Itinerary fetch failed", err));
+    }, (err) => console.error("Itinerary Error:", err));
 
     const tripRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, (snap) => { if (snap.exists()) setTripInfo(snap.data()); });
@@ -671,7 +675,7 @@ const App = () => {
           <main className="w-full max-w-5xl p-4 md:p-12">
             {activeTab === 'itinerary' ? (
               <div className="space-y-12">
-                <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap">
+                <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">
                   {Object.keys(itineraryData?.days || {}).map(day => (
                     <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
                       <span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span>
@@ -730,7 +734,7 @@ const App = () => {
                       const isExpanded = showAllNotes || !!expandedItems[item.id];
                       const isEditing = editingId === item.id;
                       return (
-                        <div key={item.id} className="relative pl-20 group">
+                        <div key={item.id} className="relative pl-2 group">
                           <div className="absolute left-[-15px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-1">
                             <button onClick={(e) => { e.stopPropagation(); const spots = [...itineraryData.days[activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button>
                             <div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md group-hover:scale-110 transition-transform">{item.time}</div>
