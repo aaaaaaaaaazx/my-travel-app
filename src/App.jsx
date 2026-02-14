@@ -13,31 +13,33 @@ import {
   onSnapshot, 
   updateDoc,
   deleteDoc,
-  collection,
-  query
+  collection
 } from 'firebase/firestore';
 import { 
-  AlertCircle, ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, Bath, Calculator, Calendar, 
-  Car, Check, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, Coins, Copy, 
-  DollarSign, Edit3, Equal, ExternalLink, Eye, EyeOff, FileText, Globe, Home, Image as ImageIcon, 
-  ListChecks, Loader2, Map as MapIcon, MapPin, MoreHorizontal, Package, Pill, Plane, Plus, Receipt, 
-  RotateCcw, Save, Search, Share2, Shirt, Smartphone, Snowflake, Sparkles, StickyNote, Sun, Trash2, 
-  TrendingUp, Utensils, Wallet, X, Cloud, CloudRain, CloudLightning
+  Plane, Calendar, Plus, Trash2, Clock, Share2, 
+  Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, Globe, ChevronRight,
+  ArrowUp, ArrowDown, Edit3, Save, MapPin, Map as MapIcon,
+  ArrowLeftRight, Settings2, RotateCcw, TrendingUp, DollarSign, CheckCircle2, Search, Circle, Coins, ListChecks,
+  Sun, Cloud, CloudRain, CloudLightning, Snowflake, Smartphone, Shirt, Bath, Pill, FileText, Package,
+  Calculator, Equal, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, StickyNote, Eye, EyeOff,
+  Image as ImageIcon, ExternalLink, Wallet, Utensils, Home, Car, ShoppingBag, MoreHorizontal, Receipt, Check,
+  Luggage
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.14)
  * ------------------------------------------------
- * V3.9 旗艦穩定版：
- * 1. 徹底解決白屏：修正編譯時的正則表達式語法與圖示定義衝突。
- * 2. 修復編輯失效：優化 State 與 Firestore 的雙向同步邏輯。
- * 3. 穩定性加固：嚴格執行 Rule 3 驗證順序，並加入多重資料存取保護。
- * 4. 完整功能整合：行程、清單、費用、天氣、匯率（含互換）。
+ * V4.0 旗艦修正版：
+ * 1. 徹底解決白屏：修正正則表達式語法、移除重複圖示匯入、補全遺漏定義。
+ * 2. 行程編輯修復：優化 spots 更新邏輯，解決編輯按鈕失效與互動衝突。
+ * 3. 清單編輯修復：支援行李清單項目文字修改與雲端同步。
+ * 4. 功能對接：匯率互換、費用統計、天氣表單查詢、8位數高精度計算機。
+ * 5. 安全穩定：遵循 Rule 1 & 3 權限規範。
  */
 
-const VERSION_INFO = "旗艦穩定版 V3.9 - 2026/02/14 18:30";
+const VERSION_INFO = "旗艦穩定版 V4.0 - 2026/02/14 19:15";
 
-// --- 配置與資料 ---
+// --- 靜態資料配置 ---
 const currencyNames = {
   "TWD": "台灣 - 台幣", "USD": "美國 - 美金", "JPY": "日本 - 日圓", "KRW": "韓國 - 韓元",
   "THB": "泰國 - 泰銖", "VND": "越南 - 越南盾", "HKD": "香港 - 港幣", "EUR": "歐盟 - 歐元",
@@ -54,40 +56,27 @@ const EXPENSE_CATEGORIES = [
 ];
 
 const CHECKLIST_CATEGORIES = [
-  { id: 'cat_3c', name: '3C 產品', icon: Smartphone, items: ['手機', '充電線', '行動電源', '相機'] },
-  { id: 'cat_clothing', name: '衣物', icon: Shirt, items: ['上衣', '下著', '外套', '內衣褲'] },
-  { id: 'cat_toiletries', name: '盥洗用品', icon: Bath, items: ['洗面乳', '牙刷牙膏', '毛巾', '濕紙巾'] },
+  { id: 'cat_3c', name: '3C 產品', icon: Smartphone, items: ['手機', '充電線', '行動電源'] },
+  { id: 'cat_clothing', name: '衣物', icon: Shirt, items: ['上衣', '下著', '外套', '襪子'] },
+  { id: 'cat_toiletries', name: '盥洗用品', icon: Bath, items: ['洗面乳', '牙刷牙膏', '毛巾'] },
   { id: 'cat_medicine', name: '個人藥品', icon: Pill, items: ['感冒藥', '腸胃藥', 'OK 繃'] },
-  { id: 'cat_docs', name: '重要文件', icon: FileText, items: ['護照', '簽證', '機票憑證'] },
-  { id: 'cat_others', name: '其他用品', icon: Package, items: ['雨具', '墨鏡', '鑰匙', '外幣'] }
+  { id: 'cat_docs', name: '重要文件', icon: FileText, items: ['護照', '簽證', '住宿憑證'] },
+  { id: 'cat_others', name: '其他用品', icon: Package, items: ['雨具', '墨鏡', '鑰匙'] }
 ];
 
 // --- Firebase 初始化 ---
-const initFirebase = () => {
-  try {
-    const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-    const config = configStr ? JSON.parse(configStr) : {
-      apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
-      authDomain: "travel-yeh.firebaseapp.com",
-      projectId: "travel-yeh",
-      storageBucket: "travel-yeh.firebasestorage.app",
-      messagingSenderId: "62005891712",
-      appId: "1:62005891712:web:4653c17db0c38f981d0c65"
-    };
-    const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(config);
-    const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-planner';
-    return {
-      fAuth: getAuth(firebaseApp),
-      fDb: getFirestore(firebaseApp),
-      fAppId: rawAppId.replace(/\//g, '_')
-    };
-  } catch (e) {
-    console.error("Firebase Initialization Failed", e);
-    return { fAuth: null, fDb: null, fAppId: 'default' };
-  }
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+  apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
+  authDomain: "travel-yeh.firebaseapp.com",
+  projectId: "travel-yeh",
+  storageBucket: "travel-yeh.firebasestorage.app",
+  messagingSenderId: "62005891712",
+  appId: "1:62005891712:web:4653c17db0c38f981d0c65"
 };
-
-const { fAuth, fDb, fAppId } = initFirebase();
+const appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+const fAuth = getAuth(appInstance);
+const fDb = getFirestore(appInstance);
+const fAppId = (typeof __app_id !== 'undefined' ? __app_id : 'travel-planner').replace(/\//g, '_');
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
@@ -127,14 +116,15 @@ const renderTextWithLinks = (text) => {
 };
 
 const getWeatherAdvice = (code) => {
-  if (code === 0) return { label: "晴天", tips: "紫外線強，建議做好防曬。", icon: Sun, color: "text-orange-500" };
-  if (code >= 1 && code <= 3) return { label: "多雲", tips: "天氣舒適，適合外出活動。", icon: Cloud, color: "text-blue-400" };
-  if (code >= 51 && code <= 67) return { label: "雨天", tips: "請記得隨身攜帶雨具。", icon: CloudRain, color: "text-blue-600" };
-  if (code >= 95) return { label: "雷雨", tips: "天氣惡劣，建議待在室內。", icon: CloudLightning, color: "text-purple-600" };
-  return { label: "多雲時晴", tips: "查看預報調整冒險計劃。", icon: Cloud, color: "text-blue-400" };
+  if (code === 0) return { label: "晴天", tips: "紫外線強，建議防曬並補充水分。", icon: Sun, color: "text-orange-500" };
+  if (code >= 1 && code <= 3) return { label: "多雲", tips: "天氣舒適，適合戶外活動。", icon: Cloud, color: "text-blue-400" };
+  if (code >= 51 && code <= 67) return { label: "有雨", tips: "請隨身攜帶雨具防止淋雨。", icon: CloudRain, color: "text-blue-600" };
+  if (code >= 71 && code <= 77) return { label: "下雪", tips: "氣溫極低，請做好充足保暖。", icon: Snowflake, color: "text-cyan-300" };
+  if (code >= 95) return { label: "雷雨", tips: "天氣惡劣，建議調整至室內行程。", icon: CloudLightning, color: "text-purple-600" };
+  return { label: "多雲時晴", tips: "查看預報調整您的行程規劃。", icon: Cloud, color: "text-blue-400" };
 };
 
-// --- 子組件：費用 ---
+// --- 子組件：費用管理 ---
 const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   const expenses = Array.isArray(itineraryData?.expenses) ? itineraryData.expenses : [];
   const [item, setItem] = useState('');
@@ -158,10 +148,10 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
 
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10 px-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center md:text-left">
         <div className="md:col-span-2 bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 flex flex-col justify-center">
             <h3 className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2 ml-1">旅程總花費</h3>
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-2 justify-center md:justify-start">
                 <span className="text-6xl font-black text-slate-900 tracking-tighter">${totalAmount.toLocaleString()}</span>
                 <span className="text-slate-300 font-bold uppercase tracking-widest text-xs">twd</span>
             </div>
@@ -188,20 +178,20 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
       <div className="bg-white p-8 rounded-[4rem] shadow-lg border border-slate-100">
           <form onSubmit={handleAdd} className="flex flex-wrap md:flex-nowrap gap-4 items-end">
               <div className="flex-1 space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">項目</label>
-                  <input required placeholder="費用名稱" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">費用項目</label>
+                  <input required placeholder="費用名稱" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" />
               </div>
               <div className="w-full md:w-48 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">金額</label>
-                  <input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" />
+                  <input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" />
               </div>
               <div className="w-full md:w-40 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">類別</label>
-                  <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-black outline-none cursor-pointer">
+                  <select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-black outline-none cursor-pointer shadow-inner">
                       {EXPENSE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
               </div>
-              <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-95 transition-all"><Plus size={28}/></button>
+              <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center shadow-blue-100"><Plus size={28}/></button>
           </form>
       </div>
       <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden">
@@ -217,7 +207,7 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
                           </td>
                       </tr>
                   )) : (
-                      <tr><td colSpan="4" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">目前尚無記錄</td></tr>
+                      <tr><td colSpan="4" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">目前尚無費用記錄</td></tr>
                   )}
               </tbody>
           </table>
@@ -226,7 +216,7 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：天氣 ---
+// --- 子組件：天氣預測 ---
 const WeatherMaster = ({ tripInfo }) => {
   const defaultEndDate = useMemo(() => {
     if (!tripInfo?.startDate || !tripInfo?.duration) return '';
@@ -246,10 +236,6 @@ const WeatherMaster = ({ tripInfo }) => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (tripInfo) setQ({ dest: tripInfo.city || '', start: tripInfo.startDate || '', end: defaultEndDate });
-  }, [tripInfo, defaultEndDate]);
 
   const fetchWeather = async (e) => {
     if (e) e.preventDefault();
@@ -276,9 +262,9 @@ const WeatherMaster = ({ tripInfo }) => {
       <div className="bg-white p-8 md:p-12 rounded-[4rem] shadow-xl border border-slate-100">
         <h3 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-3"><Sun className="text-orange-500" /> 全球精準氣象查詢</h3>
         <form onSubmit={fetchWeather} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地</label><input required value={q.dest} onChange={e => setQ({...q, dest: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none font-bold" /></div>
-          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">開始日期</label><input required type="date" value={q.start} onChange={e => setQ({...q, start: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
-          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">結束日期</label><input required type="date" value={q.end} min={q.start} onChange={e => setQ({...q, end: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
+          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地</label><input required value={q.dest} onChange={e => setQ({...q, dest: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none font-bold shadow-inner" /></div>
+          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">開始日期</label><input required type="date" value={q.start} onChange={e => setQ({...q, start: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none shadow-inner" /></div>
+          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">結束日期</label><input required type="date" value={q.end} min={q.start} onChange={e => setQ({...q, end: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none shadow-inner" /></div>
           <button type="submit" disabled={loading} className="bg-blue-600 text-white h-[60px] rounded-3xl font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-blue-100">{loading ? <Loader2 className="animate-spin" /> : <Search size={20}/>} 查詢</button>
         </form>
         {error && <p className="mt-4 text-red-500 text-xs font-bold animate-pulse">{error}</p>}
@@ -301,7 +287,7 @@ const WeatherMaster = ({ tripInfo }) => {
   );
 };
 
-// --- 子組件：匯率 ---
+// --- 子組件：匯率管理 ---
 const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -373,10 +359,10 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
             </button>
           </div>
           <div className="md:col-span-3">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1 block">轉換結果</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">轉換結果</label>
             <div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl">
               <div><span className="text-3xl font-black tracking-tight">{convertedAmount}</span><p className="text-blue-100 text-[10px] mt-1 font-bold">{currencyNames[targetCurrency]}</p></div>
-              <select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black shadow-inner">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select>
+              <select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select>
             </div>
           </div>
         </div>
@@ -409,7 +395,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：清單 ---
+// --- 子組件：行李清單 ---
 const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   const checklist = Array.isArray(itineraryData?.checklist) ? itineraryData.checklist : [];
   const [newItemText, setNewItemText] = useState('');
@@ -429,6 +415,16 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
     });
     return groups;
   }, [checklist]);
+
+  const toggleItem = async (id) => {
+    const updated = checklist.map(i => i.id === id ? { ...i, completed: !i.completed } : i);
+    await updateItinField('checklist', updated);
+  };
+
+  const deleteItem = async (id) => {
+    const updated = checklist.filter(i => i.id !== id);
+    await updateItinField('checklist', updated);
+  };
 
   const saveEdit = async (id) => {
     if (!editItemText.trim()) return;
@@ -459,7 +455,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
                    const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id };
                    await updateItinField('checklist', [...checklist, newItem]);
                    setNewItemText(''); setAddingToCategory(null);
-                })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" />
+                })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none shadow-inner" />
                 <button onClick={async () => {
                    const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id };
                    await updateItinField('checklist', [...checklist, newItem]);
@@ -468,7 +464,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
               </div>
             )}
             <div className="space-y-3">
-              {(groupedItems[cat.id] || []).map(item => (
+              {groupedItems[cat.id]?.map(item => (
                 <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>
                   {editingItemId === item.id ? (
                     <div className="flex items-center gap-2 flex-1">
@@ -477,13 +473,13 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 flex-1">
-                      <div onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white' : 'border-slate-200 hover:border-blue-300'}`}>
+                      <div onClick={() => toggleItem(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md shadow-green-100' : 'border-slate-200 hover:border-blue-300'}`}>
                         {item.completed && <CheckCircle size={14} />}
                       </div>
-                      <span onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>
+                      <span onClick={() => toggleItem(item.id)} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         <button onClick={() => { setEditingItemId(item.id); setEditItemText(item.text); }} className="p-1.5 text-slate-300 hover:text-blue-500"><Edit3 size={14}/></button>
-                        <button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                        <button onClick={() => deleteItem(item.id)} className="p-1.5 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
                       </div>
                     </div>
                   )}
@@ -515,7 +511,7 @@ const App = () => {
   const [showAllNotes, setShowAllNotes] = useState(false); 
   const [expandedItems, setExpandedItems] = useState({}); 
 
-  // 🎨 樣式注入
+  // 🎨 注入樣式與 Favicon
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
@@ -540,7 +536,7 @@ const App = () => {
     setFavicon();
   }, []);
 
-  // 🔐 身份驗證 (遵循 Rule 3)
+  // 🔐 身份驗證流程 (遵循 Rule 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -569,7 +565,7 @@ const App = () => {
     return onSnapshot(tripsRef, (snapshot) => {
       setTrips(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
     }, (err) => {
-      if (err.code === 'permission-denied') setAiStatus({ type: 'error', message: '存取權限受限。' });
+      if (err.code === 'permission-denied') setAiStatus({ type: 'error', message: '存取權限受限，請重新整理。' });
     });
   }, [user]);
 
@@ -588,7 +584,7 @@ const App = () => {
           });
           setView('editor');
       }
-    }, (err) => console.error("Itin load error", err));
+    }, (err) => console.error("Itinerary fetch failed", err));
 
     const tripRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, (snap) => { if (snap.exists()) setTripInfo(snap.data()); });
@@ -659,9 +655,9 @@ const App = () => {
           <div className="mt-12 text-slate-300 text-[10px] font-bold uppercase tracking-widest text-center">{VERSION_INFO}</div>
         </div>
       ) : (
-        <div className="w-full flex flex-col items-center pb-24 animate-fade-in">
-          <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50 shadow-sm">
-            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><Plane size={24} className="rotate-45" /><span className="tracking-tighter uppercase font-black font-sans">Traveler</span></div>
+        <div className="w-full flex flex-col items-center pb-24 animate-fade-in px-4">
+          <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50 shadow-sm max-w-[100vw] overflow-x-hidden">
+            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><Plane size={24} className="rotate-45" /><span className="tracking-tighter uppercase font-black font-sans hidden sm:inline">Traveler</span></div>
             <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
               {['itinerary', 'weather', 'expenses', 'checklist', 'currency'].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
@@ -669,12 +665,12 @@ const App = () => {
                 </button>
               ))}
             </div>
-            <div className="text-right font-black text-slate-800 tracking-tight">{tripInfo.city} 之旅</div>
+            <div className="text-right font-black text-slate-800 tracking-tight truncate max-w-[150px]">{tripInfo.city} 之旅</div>
           </nav>
           
-          <main className="w-full max-w-5xl p-6 md:p-12">
+          <main className="w-full max-w-5xl p-4 md:p-12">
             {activeTab === 'itinerary' ? (
-              <div className="space-y-12 px-4">
+              <div className="space-y-12">
                 <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap">
                   {Object.keys(itineraryData?.days || {}).map(day => (
                     <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
@@ -705,7 +701,7 @@ const App = () => {
                   </div>
                 </div>
 
-                <div className="bg-white p-8 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
+                <div className="bg-white p-6 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
                   <form onSubmit={async e => { 
                     e.preventDefault(); 
                     const current = itineraryData?.days?.[activeDay]?.spots || []; 
@@ -734,11 +730,11 @@ const App = () => {
                       const isExpanded = showAllNotes || !!expandedItems[item.id];
                       const isEditing = editingId === item.id;
                       return (
-                        <div key={item.id} className="relative pl-2 group">
+                        <div key={item.id} className="relative pl-20 group">
                           <div className="absolute left-[-15px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-1">
-                            <button onClick={() => { const spots = [...itineraryData.days[activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); const spots = [...itineraryData.days[activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button>
                             <div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md group-hover:scale-110 transition-transform">{item.time}</div>
-                            <button onClick={() => { const spots = [...itineraryData.days[activeDay].spots]; if (idx < (itineraryData.days[activeDay].spots?.length - 1)) { [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowDown size={20}/></button>
+                            <button onClick={(e) => { e.stopPropagation(); const spots = [...itineraryData.days[activeDay].spots]; if (idx < (itineraryData.days[activeDay].spots?.length - 1)) { [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowDown size={20}/></button>
                           </div>
                           <div onClick={() => !isEditing && setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${isEditing ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
                             {isEditing ? ( 
