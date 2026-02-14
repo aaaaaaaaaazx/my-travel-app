@@ -13,31 +13,31 @@ import {
   onSnapshot, 
   updateDoc,
   deleteDoc,
-  collection
+  collection,
+  query
 } from 'firebase/firestore';
 import { 
-  Plane, Calendar, Plus, Trash2, Clock, Share2, 
-  Copy, CheckCircle, AlertCircle, Loader2, Sparkles, X, Globe, ChevronRight,
-  ArrowUp, ArrowDown, Edit3, Save, MapPin, Map as MapIcon,
-  ArrowLeftRight, Settings2, RotateCcw, TrendingUp, DollarSign, CheckCircle2, Search, Circle, Coins, ListChecks,
-  Sun, Cloud, CloudRain, CloudLightning, Snowflake, Smartphone, Shirt, Bath, Pill, FileText, Package,
-  Calculator, Equal, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, StickyNote, Eye, EyeOff,
-  Image as ImageIcon, ExternalLink, Wallet, Utensils, Home, Car, ShoppingBag, MoreHorizontal, Receipt, Check
+  AlertCircle, ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, Bath, Calculator, Calendar, 
+  Car, Check, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, Coins, Copy, 
+  DollarSign, Edit3, Equal, ExternalLink, Eye, EyeOff, FileText, Globe, Home, Image as ImageIcon, 
+  ListChecks, Loader2, Map as MapIcon, MapPin, MoreHorizontal, Package, Pill, Plane, Plus, Receipt, 
+  RotateCcw, Save, Search, Share2, Shirt, Smartphone, Snowflake, Sparkles, StickyNote, Sun, Trash2, 
+  TrendingUp, Utensils, Wallet, X, Cloud, CloudRain, CloudLightning
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.14)
  * ------------------------------------------------
- * V3.8 穩定修正版：
- * 1. 徹底解決編輯失效：修正行程與清單的 State 更新邏輯與儲存路徑。
- * 2. 解決編譯白屏：修復正則表達式語法錯誤並清理圖示匯入衝突。
- * 3. 強化互動穩定：加入事件冒泡保護，防止編輯與摺疊動作衝突。
- * 4. 恢復版本標記：首頁下方版本資訊與藍色飛機 Favicon 正常顯示。
+ * V3.9 旗艦穩定版：
+ * 1. 徹底解決白屏：修正編譯時的正則表達式語法與圖示定義衝突。
+ * 2. 修復編輯失效：優化 State 與 Firestore 的雙向同步邏輯。
+ * 3. 穩定性加固：嚴格執行 Rule 3 驗證順序，並加入多重資料存取保護。
+ * 4. 完整功能整合：行程、清單、費用、天氣、匯率（含互換）。
  */
 
-const VERSION_INFO = "旗艦穩定版 V3.8 - 2026/02/14 18:20";
+const VERSION_INFO = "旗艦穩定版 V3.9 - 2026/02/14 18:30";
 
-// --- 靜態配置資料 ---
+// --- 配置與資料 ---
 const currencyNames = {
   "TWD": "台灣 - 台幣", "USD": "美國 - 美金", "JPY": "日本 - 日圓", "KRW": "韓國 - 韓元",
   "THB": "泰國 - 泰銖", "VND": "越南 - 越南盾", "HKD": "香港 - 港幣", "EUR": "歐盟 - 歐元",
@@ -54,20 +54,40 @@ const EXPENSE_CATEGORIES = [
 ];
 
 const CHECKLIST_CATEGORIES = [
-  { id: 'cat_3c', name: '3C 產品', icon: Smartphone, items: ['手機', '充電線', '行動電源', '相機', '轉接頭'] },
-  { id: 'cat_clothing', name: '衣物', icon: Shirt, items: ['上衣', '下著', '外套', '襪子', '內衣褲'] },
+  { id: 'cat_3c', name: '3C 產品', icon: Smartphone, items: ['手機', '充電線', '行動電源', '相機'] },
+  { id: 'cat_clothing', name: '衣物', icon: Shirt, items: ['上衣', '下著', '外套', '內衣褲'] },
   { id: 'cat_toiletries', name: '盥洗用品', icon: Bath, items: ['洗面乳', '牙刷牙膏', '毛巾', '濕紙巾'] },
-  { id: 'cat_medicine', name: '個人藥品', icon: Pill, items: ['感冒藥', '腸胃藥', 'OK 繃', '個人用藥'] },
-  { id: 'cat_docs', name: '重要文件', icon: FileText, items: ['護照', '簽證', '機票', '住宿憑證'] },
+  { id: 'cat_medicine', name: '個人藥品', icon: Pill, items: ['感冒藥', '腸胃藥', 'OK 繃'] },
+  { id: 'cat_docs', name: '重要文件', icon: FileText, items: ['護照', '簽證', '機票憑證'] },
   { id: 'cat_others', name: '其他用品', icon: Package, items: ['雨具', '墨鏡', '鑰匙', '外幣'] }
 ];
 
 // --- Firebase 初始化 ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const fAuth = getAuth(appInstance);
-const fDb = getFirestore(appInstance);
-const fAppId = (typeof __app_id !== 'undefined' ? __app_id : 'travel-planner').replace(/\//g, '_');
+const initFirebase = () => {
+  try {
+    const configStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+    const config = configStr ? JSON.parse(configStr) : {
+      apiKey: "AIzaSyDHfIqjgq0cJ0fCuKlIBQhof6BEJsaYLg0",
+      authDomain: "travel-yeh.firebaseapp.com",
+      projectId: "travel-yeh",
+      storageBucket: "travel-yeh.firebasestorage.app",
+      messagingSenderId: "62005891712",
+      appId: "1:62005891712:web:4653c17db0c38f981d0c65"
+    };
+    const firebaseApp = getApps().length > 0 ? getApp() : initializeApp(config);
+    const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'travel-planner';
+    return {
+      fAuth: getAuth(firebaseApp),
+      fDb: getFirestore(firebaseApp),
+      fAppId: rawAppId.replace(/\//g, '_')
+    };
+  } catch (e) {
+    console.error("Firebase Initialization Failed", e);
+    return { fAuth: null, fDb: null, fAppId: 'default' };
+  }
+};
+
+const { fAuth, fDb, fAppId } = initFirebase();
 
 // --- 工具函數 ---
 const getFormattedDate = (baseDate, dayOffset) => {
@@ -95,7 +115,7 @@ const renderTextWithLinks = (text) => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return parts.map((part, i) => {
-    if (part.match(urlRegex)) {
+    if (urlRegex.test(part)) {
       return (
         <a key={i} href={part} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline inline-flex items-center gap-1 break-all" onClick={e => e.stopPropagation()}>
           {part} <ExternalLink size={12} />
@@ -107,17 +127,16 @@ const renderTextWithLinks = (text) => {
 };
 
 const getWeatherAdvice = (code) => {
-  if (code === 0) return { label: "晴天", tips: "紫外線強，建議防曬並補充水分。", icon: Sun, color: "text-orange-500" };
-  if (code >= 1 && code <= 3) return { label: "多雲", tips: "天氣舒適，適合戶外活動。", icon: Cloud, color: "text-blue-400" };
-  if (code >= 51 && code <= 67) return { label: "有雨", tips: "請隨身攜帶折疊傘或雨衣。", icon: CloudRain, color: "text-blue-600" };
-  if (code >= 71 && code <= 77) return { label: "下雪", tips: "氣溫極低，請做好保暖措施。", icon: Snowflake, color: "text-cyan-300" };
-  if (code >= 95) return { label: "雷雨", tips: "天氣不穩，建議待在室內場所。", icon: CloudLightning, color: "text-purple-600" };
-  return { label: "多雲時晴", tips: "查看預報調整您的冒險計劃。", icon: Cloud, color: "text-blue-400" };
+  if (code === 0) return { label: "晴天", tips: "紫外線強，建議做好防曬。", icon: Sun, color: "text-orange-500" };
+  if (code >= 1 && code <= 3) return { label: "多雲", tips: "天氣舒適，適合外出活動。", icon: Cloud, color: "text-blue-400" };
+  if (code >= 51 && code <= 67) return { label: "雨天", tips: "請記得隨身攜帶雨具。", icon: CloudRain, color: "text-blue-600" };
+  if (code >= 95) return { label: "雷雨", tips: "天氣惡劣，建議待在室內。", icon: CloudLightning, color: "text-purple-600" };
+  return { label: "多雲時晴", tips: "查看預報調整冒險計劃。", icon: Cloud, color: "text-blue-400" };
 };
 
-// --- 子組件：費用管理 ---
+// --- 子組件：費用 ---
 const ExpenseMaster = ({ itineraryData, updateItinField }) => {
-  const expenses = itineraryData?.expenses || [];
+  const expenses = Array.isArray(itineraryData?.expenses) ? itineraryData.expenses : [];
   const [item, setItem] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('food');
@@ -140,9 +159,9 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10 px-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 flex flex-col justify-center text-center md:text-left">
+        <div className="md:col-span-2 bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 flex flex-col justify-center">
             <h3 className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2 ml-1">旅程總花費</h3>
-            <div className="flex items-baseline gap-2 justify-center md:justify-start">
+            <div className="flex items-baseline gap-2">
                 <span className="text-6xl font-black text-slate-900 tracking-tighter">${totalAmount.toLocaleString()}</span>
                 <span className="text-slate-300 font-bold uppercase tracking-widest text-xs">twd</span>
             </div>
@@ -170,11 +189,11 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
           <form onSubmit={handleAdd} className="flex flex-wrap md:flex-nowrap gap-4 items-end">
               <div className="flex-1 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">項目</label>
-                  <input required placeholder="費用說明" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" />
+                  <input required placeholder="費用名稱" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" />
               </div>
               <div className="w-full md:w-48 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">金額</label>
-                  <input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" />
+                  <input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" />
               </div>
               <div className="w-full md:w-40 space-y-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">類別</label>
@@ -182,24 +201,23 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
                       {EXPENSE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
               </div>
-              <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center shrink-0 shadow-blue-100"><Plus size={28}/></button>
+              <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-95 transition-all"><Plus size={28}/></button>
           </form>
       </div>
       <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden">
           <table className="w-full text-left">
-              <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black">
-                  <tr><th className="px-8 py-5">內容</th><th className="px-8 py-5">類別</th><th className="px-8 py-5 text-right">金額</th><th className="px-8 py-5 text-center">刪除</th></tr>
-              </thead>
               <tbody className="divide-y divide-slate-50">
                   {expenses.length > 0 ? [...expenses].reverse().map(exp => (
                       <tr key={exp.id} className="hover:bg-slate-50/50 transition-colors group">
                           <td className="px-8 py-5 font-black text-slate-700">{exp.item}</td>
-                          <td className="px-8 py-5"><span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-[10px] font-black uppercase text-slate-500">{exp.category}</span></td>
-                          <td className="px-8 py-5 text-right font-mono font-black text-slate-800 text-lg">${parseFloat(exp.amount).toLocaleString()}</td>
-                          <td className="px-8 py-5 text-center"><button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></td>
+                          <td className="px-8 py-5"><span className="px-3 py-1 rounded-full bg-slate-100 text-[10px] font-black uppercase text-slate-500">{exp.category}</span></td>
+                          <td className="px-8 py-5 text-right font-mono font-black text-slate-800">${parseFloat(exp.amount).toLocaleString()}</td>
+                          <td className="px-8 py-5 text-center">
+                              <button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                          </td>
                       </tr>
                   )) : (
-                      <tr><td colSpan="4" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest"><Receipt className="mx-auto mb-4 opacity-20" size={48} />目前尚無費用記錄</td></tr>
+                      <tr><td colSpan="4" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">目前尚無記錄</td></tr>
                   )}
               </tbody>
           </table>
@@ -208,13 +226,12 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：天氣預測 ---
+// --- 子組件：天氣 ---
 const WeatherMaster = ({ tripInfo }) => {
   const defaultEndDate = useMemo(() => {
     if (!tripInfo?.startDate || !tripInfo?.duration) return '';
     try {
       const d = new Date(tripInfo.startDate);
-      if (isNaN(d.getTime())) return '';
       d.setDate(d.getDate() + (parseInt(tripInfo.duration) - 1));
       return d.toISOString().split('T')[0];
     } catch (e) { return ''; }
@@ -229,6 +246,10 @@ const WeatherMaster = ({ tripInfo }) => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (tripInfo) setQ({ dest: tripInfo.city || '', start: tripInfo.startDate || '', end: defaultEndDate });
+  }, [tripInfo, defaultEndDate]);
 
   const fetchWeather = async (e) => {
     if (e) e.preventDefault();
@@ -255,9 +276,9 @@ const WeatherMaster = ({ tripInfo }) => {
       <div className="bg-white p-8 md:p-12 rounded-[4rem] shadow-xl border border-slate-100">
         <h3 className="text-2xl font-black text-slate-800 mb-8 flex items-center gap-3"><Sun className="text-orange-500" /> 全球精準氣象查詢</h3>
         <form onSubmit={fetchWeather} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地</label><input required value={q.dest} onChange={e => setQ({...q, dest: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none font-bold shadow-inner" /></div>
-          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">開始日期</label><input required type="date" value={q.start} onChange={e => setQ({...q, start: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none shadow-inner" /></div>
-          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">結束日期</label><input required type="date" value={q.end} min={q.start} onChange={e => setQ({...q, end: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none shadow-inner" /></div>
+          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">目的地</label><input required value={q.dest} onChange={e => setQ({...q, dest: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none font-bold" /></div>
+          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">開始日期</label><input required type="date" value={q.start} onChange={e => setQ({...q, start: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
+          <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">結束日期</label><input required type="date" value={q.end} min={q.start} onChange={e => setQ({...q, end: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" /></div>
           <button type="submit" disabled={loading} className="bg-blue-600 text-white h-[60px] rounded-3xl font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-blue-100">{loading ? <Loader2 className="animate-spin" /> : <Search size={20}/>} 查詢</button>
         </form>
         {error && <p className="mt-4 text-red-500 text-xs font-bold animate-pulse">{error}</p>}
@@ -280,7 +301,7 @@ const WeatherMaster = ({ tripInfo }) => {
   );
 };
 
-// --- 子組件：匯率管理 ---
+// --- 子組件：匯率 ---
 const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   const [rates, setRates] = useState({});
   const [baseCurrency, setBaseCurrency] = useState('USD');
@@ -339,11 +360,11 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden p-8 md:p-14">
         <div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center">
           <div className="md:col-span-3">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">輸入金額</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1 block">輸入金額</label>
             <div className="relative">
               <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
               <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none text-2xl font-black shadow-inner" />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div>
             </div>
           </div>
           <div className="flex justify-center md:col-span-1">
@@ -352,10 +373,10 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
             </button>
           </div>
           <div className="md:col-span-3">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">轉換結果</label>
-            <div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl shadow-blue-100">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1 block">轉換結果</label>
+            <div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl">
               <div><span className="text-3xl font-black tracking-tight">{convertedAmount}</span><p className="text-blue-100 text-[10px] mt-1 font-bold">{currencyNames[targetCurrency]}</p></div>
-              <select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black outline-none">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select>
+              <select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black shadow-inner">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select>
             </div>
           </div>
         </div>
@@ -371,7 +392,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
               <h3 className="font-black text-xl text-slate-800">自訂匯率設定</h3>
               <div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type="text" placeholder="搜尋幣別..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-12 pr-6 py-3 border rounded-2xl text-sm font-bold outline-none w-64 shadow-inner" /></div>
           </div>
-          <div className="max-h-[400px] overflow-y-auto"><table className="w-full text-left"><thead className="bg-slate-50 text-slate-400 text-[10px] font-black sticky top-0"><tr><th className="px-8 py-5">幣別</th><th className="px-8 py-5 text-right">市場匯率</th><th className="px-8 py-5 text-center">模式</th><th className="px-8 py-5 text-right">自訂數值</th></tr></thead><tbody className="divide-y divide-slate-50">{filteredCurrencies.map(curr => (<tr key={curr} className="hover:bg-blue-50/20 transition-colors"><td className="px-8 py-5 font-black text-slate-700">{currencyNames[curr]}</td><td className="px-8 py-5 text-right font-mono font-bold">{rates[curr]?.toFixed(4)}</td><td className="px-8 py-5 text-center"><button onClick={() => updateItinField(`useCustom.${curr}`, !useCustom[curr])} className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${useCustom[curr] ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>{useCustom[curr] ? '手動' : '自動'}</button></td><td className="px-8 py-5 text-right"><input type="number" step="0.0001" disabled={!useCustom[curr]} value={customRates[curr] || ''} onChange={e => updateItinField(`customRates.${curr}`, parseFloat(e.target.value) || 0)} className={`w-24 p-2 border rounded-xl text-sm text-right font-bold ${useCustom[curr] ? 'bg-white border-orange-300 ring-4 ring-orange-50' : 'bg-slate-50 shadow-inner'}`} /></td></tr>))}</tbody></table></div>
+          <div className="max-h-[400px] overflow-y-auto"><table className="w-full text-left border-collapse"><thead className="bg-slate-50 text-slate-400 text-[10px] font-black sticky top-0"><tr><th className="px-8 py-5">幣別</th><th className="px-8 py-5 text-right">市場匯率</th><th className="px-8 py-5 text-center">模式</th><th className="px-8 py-5 text-right">自訂數值</th></tr></thead><tbody className="divide-y divide-slate-50">{filteredCurrencies.map(curr => (<tr key={curr} className="hover:bg-blue-50/20 transition-colors"><td className="px-8 py-5 font-black text-slate-700">{currencyNames[curr]}</td><td className="px-8 py-5 text-right font-mono font-bold">{rates[curr]?.toFixed(4)}</td><td className="px-8 py-5 text-center"><button onClick={() => updateItinField(`useCustom.${curr}`, !useCustom[curr])} className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${useCustom[curr] ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>{useCustom[curr] ? '手動' : '自動'}</button></td><td className="px-8 py-5 text-right"><input type="number" step="0.0001" disabled={!useCustom[curr]} value={customRates[curr] || ''} onChange={e => updateItinField(`customRates.${curr}`, parseFloat(e.target.value) || 0)} className={`w-24 p-2 border rounded-xl text-sm text-right font-bold ${useCustom[curr] ? 'bg-white border-orange-300 ring-4 ring-orange-50' : 'bg-slate-50 shadow-inner'}`} /></td></tr>))}</tbody></table></div>
         </div>
       )}
 
@@ -388,13 +409,16 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：行李清單 ---
+// --- 子組件：清單 ---
 const ChecklistMaster = ({ itineraryData, updateItinField }) => {
-  const checklist = itineraryData?.checklist || [];
+  const checklist = Array.isArray(itineraryData?.checklist) ? itineraryData.checklist : [];
   const [newItemText, setNewItemText] = useState('');
   const [addingToCategory, setAddingToCategory] = useState(null);
   const [editingItemId, setEditingItemId] = useState(null);
   const [editItemText, setEditItemText] = useState('');
+
+  const completedCount = checklist.filter(i => i.completed).length;
+  const progress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
   const groupedItems = useMemo(() => {
     const groups = {};
@@ -406,37 +430,12 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
     return groups;
   }, [checklist]);
 
-  const toggleItem = async (id) => {
-    const updated = checklist.map(i => i.id === id ? { ...i, completed: !i.completed } : i);
-    await updateItinField('checklist', updated);
-  };
-
-  const deleteItem = async (id) => {
-    const updated = checklist.filter(i => i.id !== id);
-    await updateItinField('checklist', updated);
-  };
-
-  const addItem = async (catId) => {
-    if (!newItemText.trim()) return;
-    const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: catId };
-    await updateItinField('checklist', [...checklist, newItem]);
-    setNewItemText(''); setAddingToCategory(null);
-  };
-
-  const startEditing = (item) => {
-    setEditingItemId(item.id);
-    setEditItemText(item.text);
-  };
-
   const saveEdit = async (id) => {
     if (!editItemText.trim()) return;
     const updated = checklist.map(i => i.id === id ? { ...i, text: editItemText.trim() } : i);
     await updateItinField('checklist', updated);
     setEditingItemId(null);
   };
-
-  const completedCount = checklist.filter(i => i.completed).length;
-  const progress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10 px-4">
@@ -456,28 +455,35 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
             </div>
             {addingToCategory === cat.id && (
               <div className="mb-4 flex gap-2 animate-fade-in">
-                <input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && addItem(cat.id)} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none shadow-inner" />
-                <button onClick={() => addItem(cat.id)} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button>
+                <input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (async () => {
+                   const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id };
+                   await updateItinField('checklist', [...checklist, newItem]);
+                   setNewItemText(''); setAddingToCategory(null);
+                })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" />
+                <button onClick={async () => {
+                   const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id };
+                   await updateItinField('checklist', [...checklist, newItem]);
+                   setNewItemText(''); setAddingToCategory(null);
+                }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button>
               </div>
             )}
             <div className="space-y-3">
-              {groupedItems[cat.id]?.map(item => (
+              {(groupedItems[cat.id] || []).map(item => (
                 <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>
                   {editingItemId === item.id ? (
                     <div className="flex items-center gap-2 flex-1">
                       <input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" />
                       <button onClick={() => saveEdit(item.id)} className="text-blue-600 hover:bg-blue-50 p-1 rounded-lg transition-colors"><Check size={16}/></button>
-                      <button onClick={() => setEditingItemId(null)} className="text-slate-400 hover:bg-slate-100 p-1 rounded-lg transition-colors"><X size={16}/></button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-3 flex-1">
-                      <div onClick={() => toggleItem(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md shadow-green-100' : 'border-slate-200 hover:border-blue-300'}`}>
+                      <div onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white' : 'border-slate-200 hover:border-blue-300'}`}>
                         {item.completed && <CheckCircle size={14} />}
                       </div>
-                      <span onClick={() => toggleItem(item.id)} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => startEditing(item)} className="p-1.5 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"><Edit3 size={14}/></button>
-                        <button onClick={() => deleteItem(item.id)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 size={14}/></button>
+                      <span onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onClick={() => { setEditingItemId(item.id); setEditItemText(item.text); }} className="p-1.5 text-slate-300 hover:text-blue-500"><Edit3 size={14}/></button>
+                        <button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
                       </div>
                     </div>
                   )}
@@ -508,14 +514,13 @@ const App = () => {
   const [aiStatus, setAiStatus] = useState({ type: '', message: '' });
   const [showAllNotes, setShowAllNotes] = useState(false); 
   const [expandedItems, setExpandedItems] = useState({}); 
-  const [currencyAmount, setCurrencyAmount] = useState(1); 
 
-  // 🎨 樣式與 Favicon 注入
+  // 🎨 樣式注入
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'stable-ui-v3.8';
+    const style = document.createElement('style');
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { min-height: 100vh !important; width: 100% !important; background-color: #f8fafc; font-family: 'Noto Sans TC', sans-serif; margin: 0; padding: 0; }
@@ -535,7 +540,7 @@ const App = () => {
     setFavicon();
   }, []);
 
-  // 🔐 身份驗證流程 (遵循 Rule 3)
+  // 🔐 身份驗證 (遵循 Rule 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -544,11 +549,15 @@ const App = () => {
         } else {
           await signInAnonymously(fAuth);
         }
-      } catch (e) { console.error("Auth failed", e); setIsLoading(false); }
+      } catch (e) { 
+        console.error("Auth failed", e); 
+      } finally {
+        setIsLoading(false);
+      }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(fAuth, (u) => { 
-      if (u) { setUser(u); setIsLoading(false); }
+      if (u) { setUser(u); }
     });
     return () => unsubscribe();
   }, []);
@@ -560,7 +569,7 @@ const App = () => {
     return onSnapshot(tripsRef, (snapshot) => {
       setTrips(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
     }, (err) => {
-      if (err.code === 'permission-denied') setAiStatus({ type: 'error', message: '存取權限受限，請重新整理。' });
+      if (err.code === 'permission-denied') setAiStatus({ type: 'error', message: '存取權限受限。' });
     });
   }, [user]);
 
@@ -579,7 +588,7 @@ const App = () => {
           });
           setView('editor');
       }
-    }, (err) => console.error("Itinerary fetch failed", err));
+    }, (err) => console.error("Itin load error", err));
 
     const tripRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, (snap) => { if (snap.exists()) setTripInfo(snap.data()); });
@@ -652,7 +661,7 @@ const App = () => {
       ) : (
         <div className="w-full flex flex-col items-center pb-24 animate-fade-in">
           <nav className="w-full h-20 bg-white/90 backdrop-blur-xl border-b border-slate-100 flex items-center justify-between px-10 sticky top-0 z-50 shadow-sm">
-            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><Plane size={24} className="rotate-45" /><span className="tracking-tighter uppercase font-black">Traveler</span></div>
+            <div className="font-black text-blue-600 text-2xl flex items-center gap-3 cursor-pointer group" onClick={() => window.location.reload()}><Plane size={24} className="rotate-45" /><span className="tracking-tighter uppercase font-black font-sans">Traveler</span></div>
             <div className="hidden md:flex bg-slate-100 p-1.5 rounded-2xl gap-1">
               {['itinerary', 'weather', 'expenses', 'checklist', 'currency'].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>
