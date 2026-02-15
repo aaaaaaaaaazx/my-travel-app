@@ -12,7 +12,7 @@ import {
   setDoc, 
   onSnapshot, 
   updateDoc,
-  deleteDoc,a
+  deleteDoc,
   collection,
   getDocs
 } from 'firebase/firestore';
@@ -30,16 +30,17 @@ import {
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.15)
  * ------------------------------------------------
- * V5.8 旗艦終極權限與穩定版：
- * 1. 徹底解決 Permissions Error：將 Firestore 請求封裝在 authUser 狀態確認與 token 準備好之後。
- * 2. 解決登入卡死：加入超時自動解鎖機制，確保按鈕必定可點擊。
- * 3. 管理者入口明顯化：登入頁面提供明確切換鈕，支援管理員 yljh 登入。
- * 4. 解決物件渲染衝突：加固 renderTextWithLinks 函式，防止 React child 物件錯誤。
- * 5. 全功能保留：行程圖片、超連結自動化、支出統計、匯率互換。
- * 6. 資料鎖定：fAppId = 'travel-yeh'。
+ * V5.8.1 旗艦權限與編譯修復版：
+ * 1. 修正編譯錯誤：移除 Firestore 匯入語句中多餘的字母 'a'。
+ * 2. 徹底解決 Permissions Error：將 Firestore 請求封裝在 authUser 狀態確認與 token 準備好之後。
+ * 3. 解決登入卡死：加入超時自動解鎖機制，確保按鈕必定可點擊。
+ * 4. 管理者入口明顯化：登入頁面提供明確切換鈕，支援管理員 yljh 登入。
+ * 5. 解決物件渲染衝突：加固 renderTextWithLinks 函式，防止 React child 物件錯誤。
+ * 6. 全功能保留：行程圖片、超連結自動化、支出統計、匯率互換。
+ * 7. 資料鎖定：fAppId = 'travel-yeh'。
  */
 
-const VERSION_INFO = "旗艦穩定版 V5.8 - 2026/02/15 22:45";
+const VERSION_INFO = "旗艦穩定版 V5.8.1 - 2026/02/15 22:45";
 
 // --- 靜態配置資料 ---
 const currencyNames = {
@@ -249,7 +250,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-12 animate-fade-in space-y-12">
       <header className="max-w-5xl mx-auto flex justify-between items-center bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><UserCog size={32} /></div>
+          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/30"><UserCog size={32} /></div>
           <div><h2 className="text-2xl font-black tracking-tight">管理者後台</h2><p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Login: yljh</p></div>
         </div>
         <button onClick={onLogout} className="p-4 bg-white/10 hover:bg-red-500 transition-all rounded-2xl flex items-center gap-2 font-black text-sm"><LogOut size={20} /> 登出</button>
@@ -257,12 +258,14 @@ const AdminDashboard = ({ authUser, onLogout }) => {
       <div className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-[4rem] shadow-xl border border-slate-100">
         <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600" /> {editingUser ? `編輯使用者: ${editingUser.username}` : '建立新使用者帳號'}</h3>
         <form onSubmit={handleSave} className="flex flex-wrap md:flex-nowrap gap-4 items-end">
-          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1">帳號名稱</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" /></div>)}
-          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1">登入密碼</label><input required placeholder="輸入新密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" /></div>
-          <div className="flex gap-2">{editingUser && <button type="button" onClick={() => {setEditingUser(null); setNewPwd('');}} className="px-6 py-4 rounded-2xl font-bold text-slate-400">取消</button>}<button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-blue-700 active:scale-95">{editingUser ? '儲存' : '建立'}</button></div>
+          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1">帳號名稱</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>)}
+          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1">登入密碼</label><input required placeholder="輸入新密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>
+          <div className="flex gap-2">{editingUser && <button type="button" onClick={() => {setEditingUser(null); setNewPwd('');}} className="px-6 py-4 rounded-2xl font-bold text-slate-400">取消</button>}
+            <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-blue-700 active:scale-95">{editingUser ? '儲存' : '建立'}</button>
+          </div>
         </form>
       </div>
-      <div className="max-w-5xl mx-auto bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden">
+      <div className="max-w-5xl mx-auto bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
             <tr><th className="px-8 py-5">使用者</th><th className="px-8 py-5">當前密碼</th><th className="px-8 py-5 text-center">操作</th></tr>
@@ -284,103 +287,6 @@ const AdminDashboard = ({ authUser, onLogout }) => {
   );
 };
 
-// --- 子組件：行程各分頁 ---
-const ExpenseMaster = ({ itineraryData, updateItinField }) => {
-  const expenses = Array.isArray(itineraryData?.expenses) ? itineraryData.expenses : [];
-  const [item, setItem] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('food');
-  const totalAmount = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-  return (
-    <div className="animate-fade-in space-y-8 pb-10 px-4">
-      <div className="bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 text-center md:text-left"><h3 className="text-slate-400 font-black text-xs uppercase tracking-widest mb-2">旅程總花費</h3><div className="flex items-baseline gap-2"><span className="text-6xl font-black text-slate-900 tracking-tighter">${totalAmount.toLocaleString()}</span><span className="text-slate-300 font-bold uppercase tracking-widest text-xs">twd</span></div></div>
-      <div className="bg-white p-8 rounded-[4rem] shadow-lg border border-slate-100"><form onSubmit={async e => { e.preventDefault(); if(!item || !amount) return; await updateItinField('expenses', [...expenses, { id: Date.now().toString(), item, amount, category, date: new Date().toISOString() }]); setItem(''); setAmount(''); }} className="flex flex-wrap md:flex-nowrap gap-4 items-end"><div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">項目</label><input required placeholder="費用名稱" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" /></div><div className="w-full md:w-48 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">金額</label><input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none" /></div><div className="w-full md:w-40 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">類別</label><select value={category} onChange={e => setCategory(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-black outline-none">{EXPENSE_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div><button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-95 flex items-center justify-center"><Plus size={28}/></button></form></div>
-      <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden"><table className="w-full text-left"><tbody className="divide-y divide-slate-50">{expenses.length > 0 ? [...expenses].reverse().map(exp => (<tr key={exp.id} className="hover:bg-slate-50/50 transition-colors group"><td className="px-8 py-5 font-black text-slate-700">{exp.item}</td><td className="px-8 py-5 text-right font-mono font-black text-slate-800">${parseFloat(exp.amount).toLocaleString()}</td><td className="px-8 py-5 text-center"><button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button></td></tr>)) : (<tr><td colSpan="3" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">目前尚無費用記錄</td></tr>)}</tbody></table></div>
-    </div>
-  );
-};
-
-const ChecklistMaster = ({ itineraryData, updateItinField }) => {
-  const checklist = Array.isArray(itineraryData?.checklist) ? itineraryData.checklist : [];
-  const [newItemText, setNewItemText] = useState('');
-  const [addingToCategory, setAddingToCategory] = useState(null);
-  const [editingItemId, setEditingItemId] = useState(null);
-  const [editItemText, setEditItemText] = useState('');
-  const groupedItems = useMemo(() => { const groups = {}; CHECKLIST_CATEGORIES.forEach(cat => groups[cat.id] = []); checklist.forEach(item => { const catId = item.categoryId || 'cat_others'; if (groups[catId]) groups[catId].push(item); }); return groups; }, [checklist]);
-  const handleSaveEdit = async (id) => { if (!editItemText.trim()) return; await updateItinField('checklist', checklist.map(i => i.id === id ? { ...i, text: editItemText.trim() } : i)); setEditingItemId(null); };
-  const progress = checklist.length > 0 ? Math.round((checklist.filter(i => i.completed).length / checklist.length) * 100) : 0;
-  return (
-    <div className="animate-fade-in space-y-8 pb-10 px-4">
-      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 text-center"><div className="flex justify-between items-center mb-4 gap-4"><div><h3 className="text-2xl font-black text-slate-800 tracking-tight">行李清單進度</h3><p className="text-sm font-bold text-slate-400">已完成 {checklist.filter(i => i.completed).length} / {checklist.length} 項</p></div><span className="text-6xl font-black text-blue-600 italic">{progress}%</span></div><div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progress}%` }}></div></div></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{CHECKLIST_CATEGORIES.map(cat => (<div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-50 flex flex-col hover:shadow-xl transition-all"><div className="flex items-center gap-3 mb-6"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Plus size={20} /></button>{addingToCategory === cat.id && (<div className="mb-4 flex gap-2 animate-fade-in"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>)}<div className="space-y-3">{groupedItems[cat.id]?.map(item => (<div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>{editingItemId === item.id ? (<div className="flex items-center gap-2 flex-1"><input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" /><button onClick={() => handleSaveEdit(item.id)} className="text-blue-600 hover:bg-blue-50 p-1 rounded-lg transition-colors"><Check size={16}/></button></div>) : (<div className="flex items-center gap-3 flex-1"><div onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md' : 'border-slate-200 hover:border-blue-300'}`}>{item.completed && <CheckCircle size={14} />}</div><span onClick={() => { setEditingItemId(item.id); setEditItemText(item.text); }} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span><button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button></div>)}</div>))}</div></div>))}</div>
-    </div>
-  );
-};
-
-const MainItinerarySection = (props) => (
-  <div className="space-y-12">
-    <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">
-      {Object.keys(props.itineraryData?.days || {}).map(day => (
-        <button key={day} onClick={() => {props.setActiveDay(parseInt(day)); props.setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${props.activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
-          <span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span>
-          <span className="text-[10px] mt-1 font-bold">{getFormattedDate(props.tripInfo.startDate, parseInt(day)).split('/').slice(1).join('/')}</span>
-        </button>
-      ))}
-    </div>
-    <div className="space-y-6 px-4">
-      <div className="flex flex-col md:flex-row md:items-end gap-4">
-        <div className="flex items-center gap-4">
-          <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {props.activeDay}</h2>
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
-            <button onClick={() => props.moveDay(-1)} disabled={props.activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowLeft size={20}/></button>
-            <div className="w-px h-6 bg-slate-200 my-auto"></div>
-            <button onClick={() => props.moveDay(1)} disabled={props.activeDay === parseInt(props.tripInfo.duration || "0")} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowRight size={20}/></button>
-          </div>
-        </div>
-        <div className="flex-1">
-          <span className="text-lg text-slate-400 font-bold ml-1 mb-1 block tracking-tight">({getFormattedDate(props.tripInfo.startDate, props.activeDay)} {getDayOfWeek(props.tripInfo.startDate, props.activeDay)})</span>
-          <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full transition-all" placeholder="輸入今日主題..." value={props.itineraryData?.days?.[props.activeDay]?.title || ''} onChange={e => props.updateItinField(`days.${props.activeDay}.title`, e.target.value)} />
-        </div>
-      </div>
-      <div className="flex justify-center md:justify-start px-4"><button onClick={() => props.setShowAllNotes(!props.showAllNotes)} className={`flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all shadow-sm border ${props.showAllNotes ? 'bg-blue-600 text-white border-blue-600 shadow-blue-100 shadow-md' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}>{props.showAllNotes ? <EyeOff size={16} /> : <Eye size={16} />} {props.showAllNotes ? '隱藏全部備註' : '顯示全部備註'}</button></div>
-    </div>
-    <div className="bg-white p-6 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
-      <form onSubmit={async e => { e.preventDefault(); const current = props.itineraryData?.days?.[props.activeDay]?.spots || []; await props.updateItinField(`days.${props.activeDay}.spots`, [...current, { ...props.newSpot, id: Date.now().toString() }]); props.setNewSpot({ time: '09:00', spot: '', note: '', imageUrl: '' }); }} className="mb-12 space-y-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner">
-        <div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm shadow-inner"><Clock size={18} className="text-blue-500" /><input type="time" value={props.newSpot.time} onChange={e => props.setNewSpot({...props.newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 text-slate-700" /></div><input placeholder="想在那裡留下足跡？" required value={props.newSpot.spot} onChange={e => props.setNewSpot({...props.newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm shadow-inner" /></div>
-        <div className="flex gap-3"><div className="w-1/3 flex items-center gap-2 bg-white px-4 py-2 rounded-xl border shadow-sm text-xs font-bold text-slate-400"><ImageIcon size={18} /><input placeholder="圖片網址" value={props.newSpot.imageUrl} onChange={e => props.setNewSpot({...props.newSpot, imageUrl: e.target.value})} className="bg-transparent outline-none w-full" /></div><textarea placeholder="細節備註 (支援超連結)..." value={props.newSpot.note} onChange={e => props.setNewSpot({...props.newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm shadow-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black active:scale-95 shadow-lg flex items-center justify-center shadow-slate-200 shadow-md"><Plus size={24}/></button></div>
-      </form>
-      <div className="space-y-8 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full px-2">
-        {(props.itineraryData?.days?.[props.activeDay]?.spots || []).map((item, idx) => {
-          const isExpanded = props.showAllNotes || !!props.expandedItems[item.id];
-          const isEditing = props.editingId === item.id;
-          return (
-            <div key={item.id} className="relative pl-20 group">
-              <div className="absolute left-[-15px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={(e) => { e.stopPropagation(); const spots = [...props.itineraryData.days[props.activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; props.updateItinField(`days.${props.activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div><button onClick={(e) => { e.stopPropagation(); const spots = [...props.itineraryData.days[props.activeDay].spots]; if (idx < (props.itineraryData.days[props.activeDay].spots?.length - 1)) { [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; props.updateItinField(`days.${props.activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowDown size={20}/></button></div>
-              <div onClick={() => !isEditing && props.setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${isEditing ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
-                {isEditing ? ( 
-                  <div className="space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
-                    <div className="flex gap-2"><input type="time" value={props.editData.time} onChange={e => props.setEditData({...props.editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none shadow-inner" /><input value={props.editData.spot} onChange={e => props.setEditData({...props.editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none shadow-inner" /></div>
-                    <input placeholder="修改圖片網址..." value={props.editData.imageUrl || ''} onChange={e => props.setEditData({...props.editData, imageUrl: e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 outline-none text-xs font-bold shadow-inner" />
-                    <textarea value={props.editData.note} onChange={e => props.setEditData({...props.editData, note: e.target.value})} className="w-full p-3 border rounded-xl h-24 bg-slate-50 outline-none text-sm shadow-inner" />
-                    <div className="flex justify-end gap-3"><button onClick={(e) => { e.stopPropagation(); props.setEditingId(null); }} className="text-sm font-bold text-slate-400 px-4">取消</button><button onClick={async (e) => { e.stopPropagation(); const spots = props.itineraryData.days[props.activeDay].spots.map(s => s.id === props.editingId ? props.editData : s); await props.updateItinField(`days.${props.activeDay}.spots`, spots); props.setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg shadow-blue-100">儲存變更</button></div>
-                  </div>
-                ) : ( <div className="flex justify-between items-start gap-4">
-                    <div className="space-y-4 flex-1">
-                      <div className="flex items-center gap-4 flex-wrap"><h4 className="text-3xl font-black text-slate-800 leading-tight tracking-tight">{item.spot}</h4><div className="flex gap-2"><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm shadow-blue-100 hover:bg-blue-600 hover:text-white"><MapPin size={14} /> 地圖</a>{(item.note || item.imageUrl) && <div className={`px-2 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-black uppercase ${isExpanded ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-400'}`}><StickyNote size={12}/> {isExpanded ? '已展開' : '細節'}</div>}</div></div>
-                      {isExpanded && (<div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>{item.imageUrl && (<div className="relative group/img overflow-hidden rounded-2xl border border-white shadow-sm max-w-md"><img src={item.imageUrl} alt={item.spot} className="w-full max-w-md h-auto rounded-2xl shadow-sm border border-white cursor-zoom-in" onError={e => e.target.style.display='none'} onClick={(e) => { e.stopPropagation(); window.open(item.imageUrl, '_blank'); }} /></div>)}<p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{renderTextWithLinks(item.note) || "暫無說明內容"}</p></div>)}
-                    </div>
-                    <div className="flex flex-col gap-2 transition-all"><button onClick={(e) => { e.stopPropagation(); props.setEditingId(item.id); props.setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all shadow-sm"><Edit3 size={20} /></button><button onClick={async (e) => { e.stopPropagation(); if(confirm('確定刪除？')) { const updated = props.itineraryData.days[props.activeDay].spots.filter(s => s.id !== item.id); await props.updateItinField(`days.${props.activeDay}.spots`, updated); } }} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all shadow-sm"><Trash2 size={20}/></button></div>
-                </div> )}
-              </div>
-            </div>
-          );
-        })}
-        {(!props.itineraryData?.days?.[props.activeDay]?.spots?.length) && ( <div className="py-24 text-center border-4 border-dashed border-slate-50 rounded-[3rem]"><Calendar className="text-slate-100 mx-auto mb-6 opacity-20" size={80} /><p className="text-slate-300 font-black text-xl italic text-center">今天還沒有安排任何行程！</p></div> )}
-      </div>
-    </div>
-  </div>
-);
-
 // --- 主 App 組件 ---
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -401,7 +307,7 @@ const App = () => {
   const [showAllNotes, setShowAllNotes] = useState(false); 
   const [expandedItems, setExpandedItems] = useState({}); 
 
-  // 1. 🔐 核心 Auth 監聽流程 (Rule 3)
+  // 1. 🔐 核心 Auth 監聽流程 (遵循 Rule 3)
   useEffect(() => {
     const initAppAuth = async () => {
       try {
@@ -471,16 +377,30 @@ const App = () => {
     } catch (e) { console.error(e); } finally { setIsLoading(false); }
   };
 
-  if (!isLoggedIn && !isAdmin) return <LoginView authUser={user} onLoginSuccess={() => setIsLoggedIn(true)} onAdminSuccess={() => setIsAdmin(true)} />;
-  if (isAdmin) return <AdminDashboard authUser={user} onLogout={() => setIsAdmin(false)} />;
+  // 🔒 權限分配
+  if (!isLoggedIn && !isAdmin) {
+    return <LoginView authUser={user} onLoginSuccess={() => setIsLoggedIn(true)} onAdminSuccess={() => setIsAdmin(true)} />;
+  }
+
+  if (isAdmin) {
+    return <AdminDashboard authUser={user} onLogout={() => setIsAdmin(false)} />;
+  }
+
   if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-bold italic tracking-widest leading-none">啟動彥麟的冒險引擎...</p></div>;
 
   return (
     <div className="w-full flex flex-col items-center min-h-screen">
       {aiStatus.message && ( <div className={`fixed top-4 z-[200] px-6 py-3 rounded-2xl shadow-2xl animate-fade-in flex items-center gap-3 border bg-white text-green-600 border-green-100 shadow-green-100`}> <span className="font-bold text-sm">{aiStatus.message}</span><button onClick={() => setAiStatus({ type: '', message: '' })}><X size={14}/></button> </div> )}
+
       {view === 'home' ? (
         <div className="w-full max-w-5xl px-6 py-20 flex flex-col items-center animate-fade-in px-4">
-          <div className="text-center mb-16"><div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200 shadow-lg"><Plane size={48} /></div><h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase leading-none">Travel Planner</h1><p className="text-slate-400 font-bold tracking-widest text-sm italic text-center uppercase">為您的冒險量身打造智能管家 - 彥麟製作</p></div>
+          <div className="text-center mb-16">
+            <div className="w-24 h-24 bg-blue-600 text-white rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 shadow-2xl rotate-12 transition-transform hover:rotate-0 shadow-blue-200 shadow-lg">
+              <Plane size={48} />
+            </div>
+            <h1 className="text-5xl font-black mb-4 tracking-tighter text-slate-900 uppercase leading-none">Travel Planner</h1>
+            <p className="text-slate-400 font-bold tracking-widest text-sm italic text-center uppercase">為您的冒險量身打造智能管家 - 彥麟製作</p>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 w-full items-start px-4">
             <div className="space-y-6"><h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Plus className="text-blue-600" /> 建立新旅程</h3>
               <form onSubmit={handleCreate} className="bg-white p-10 rounded-[3rem] shadow-xl space-y-8 border border-white shadow-slate-200">
@@ -507,12 +427,132 @@ const App = () => {
                 <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm shadow-blue-50' : 'text-slate-400 hover:text-slate-600'}`}>{tab === 'itinerary' ? '行程' : tab === 'weather' ? '天氣' : tab === 'expenses' ? '費用' : tab === 'checklist' ? '清單' : '匯率'}</button>
               ))}
             </div>
-            <div className="text-right flex items-center gap-4"><div className="hidden sm:block text-right"><div className="font-black text-slate-800 tracking-tight truncate max-w-[150px] leading-none">{tripInfo.city} 之旅</div><div className="text-[9px] font-bold text-slate-400 mt-1">{tripInfo.startDate}</div></div><button onClick={() => { setIsLoggedIn(false); setIsAdmin(false); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors shadow-sm bg-white rounded-xl"><LogOut size={20}/></button></div>
+            <div className="text-right flex items-center gap-4">
+              <div className="hidden sm:block text-right"><div className="font-black text-slate-800 tracking-tight truncate max-w-[150px] leading-none">{tripInfo.city} 之旅</div><div className="text-[9px] font-bold text-slate-400 mt-1">{tripInfo.startDate}</div></div>
+              <button onClick={() => { setIsLoggedIn(false); setIsAdmin(false); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors shadow-sm bg-white rounded-xl"><LogOut size={20}/></button>
+            </div>
           </nav>
           
           <main className="w-full max-w-5xl p-4 md:p-12">
             {activeTab === 'itinerary' ? (
-              <MainItinerarySection tripInfo={tripInfo} itineraryData={itineraryData} activeDay={activeDay} setActiveDay={setActiveDay} moveDay={moveDay} updateItinField={updateItinField} showAllNotes={showAllNotes} setShowAllNotes={setShowAllNotes} expandedItems={expandedItems} setExpandedItems={setExpandedItems} editingId={editingId} setEditingId={setEditingId} editData={editData} setEditData={setEditData} newSpot={newSpot} setNewSpot={setNewSpot} />
+              <div className="space-y-12 px-4">
+                <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">
+                  {Object.keys(itineraryData?.days || {}).map(day => (
+                    <button key={day} onClick={() => {setActiveDay(parseInt(day)); setEditingId(null);}} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+                      <span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span>
+                      <span className="text-[10px] mt-1 font-bold">{getFormattedDate(tripInfo.startDate, parseInt(day)).split('/').slice(1).join('/')}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-6">
+                  <div className="flex flex-col md:flex-row md:items-end gap-4">
+                    <div className="flex items-center gap-4">
+                      <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {activeDay}</h2>
+                      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
+                        <button onClick={() => moveDay(-1)} disabled={activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowLeft size={20}/></button>
+                        <div className="w-px h-6 bg-slate-200 my-auto"></div>
+                        <button onClick={() => moveDay(1)} disabled={activeDay === parseInt(tripInfo.duration || "0")} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowRight size={20}/></button>
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-lg text-slate-400 font-bold ml-1 mb-1 block tracking-tight">({getFormattedDate(tripInfo.startDate, activeDay)} {getDayOfWeek(tripInfo.startDate, activeDay)})</span>
+                      <input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full transition-all" placeholder="輸入今日主題..." value={itineraryData?.days?.[activeDay]?.title || ''} onChange={e => updateItinField(`days.${activeDay}.title`, e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex justify-center md:justify-start">
+                    <button onClick={() => setShowAllNotes(!showAllNotes)} className={`flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all shadow-sm border ${showAllNotes ? 'bg-blue-600 text-white border-blue-600 shadow-blue-100 shadow-md' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}>
+                      {showAllNotes ? <EyeOff size={16} /> : <Eye size={16} />} {showAllNotes ? '隱藏全部備註' : '顯示全部備註'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
+                  <form onSubmit={async e => { 
+                    e.preventDefault(); 
+                    const current = itineraryData?.days?.[activeDay]?.spots || []; 
+                    await updateItinField(`days.${activeDay}.spots`, [...current, { ...newSpot, id: Date.now().toString() }]); 
+                    setNewSpot({ time: '09:00', spot: '', note: '', imageUrl: '' }); 
+                  }} className="mb-12 space-y-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner">
+                    <div className="flex gap-3 flex-wrap md:flex-nowrap">
+                       <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm shadow-inner">
+                        <Clock size={18} className="text-blue-500" />
+                        <input type="time" value={newSpot.time} onChange={e => setNewSpot({...newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 text-slate-700" />
+                      </div>
+                      <input placeholder="想在那裡留下足跡？" required value={newSpot.spot} onChange={e => setNewSpot({...newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm shadow-inner" />
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="w-1/3 flex items-center gap-2 bg-white px-4 py-2 rounded-xl border shadow-sm text-xs font-bold text-slate-400">
+                        <ImageIcon size={18} />
+                        <input placeholder="圖片網址" value={newSpot.imageUrl} onChange={e => setNewSpot({...newSpot, imageUrl: e.target.value})} className="bg-transparent outline-none w-full" />
+                      </div>
+                      <textarea placeholder="細節備註 (支援超連結)..." value={newSpot.note} onChange={e => setNewSpot({...newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm shadow-sm shadow-inner" />
+                      <button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black active:scale-95 shadow-lg flex items-center justify-center shadow-slate-200 shadow-md"><Plus size={24}/></button>
+                    </div>
+                  </form>
+
+                  <div className="space-y-8 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full px-2">
+                    {(itineraryData?.days?.[activeDay]?.spots || []).map((item, idx) => {
+                      const isExpanded = showAllNotes || !!expandedItems[item.id];
+                      const isEditing = editingId === item.id;
+                      return (
+                        <div key={item.id} className="relative pl-20 group">
+                          <div className="absolute left-[-15px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); const spots = [...itineraryData.days[activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button>
+                            <div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md group-hover:scale-110 transition-transform">{item.time}</div>
+                            <button onClick={(e) => { e.stopPropagation(); const spots = [...itineraryData.days[activeDay].spots]; if (idx < (itineraryData.days[activeDay].spots?.length - 1)) { [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; updateItinField(`days.${activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowDown size={20}/></button>
+                          </div>
+                          <div onClick={() => !isEditing && setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${isEditing ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
+                            {isEditing ? ( 
+                              <div className="space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
+                                <div className="flex gap-2">
+                                  <input type="time" value={editData.time} onChange={e => setEditData({...editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none shadow-inner" />
+                                  <input value={editData.spot} onChange={e => setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none shadow-inner" />
+                                </div>
+                                <input placeholder="修改圖片網址..." value={editData.imageUrl || ''} onChange={e => setEditData({...editData, imageUrl: e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 outline-none text-xs font-bold shadow-inner" />
+                                <textarea value={editData.note} onChange={e => setEditData({...editData, note: e.target.value})} className="w-full p-3 border rounded-xl h-24 bg-slate-50 outline-none text-sm shadow-inner" />
+                                <div className="flex justify-end gap-3">
+                                  <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="text-sm font-bold text-slate-400 px-4">取消</button>
+                                  <button onClick={async (e) => { 
+                                    e.stopPropagation();
+                                    const spots = itineraryData.days[activeDay].spots.map(s => s.id === editingId ? editData : s); 
+                                    await updateItinField(`days.${activeDay}.spots`, spots); 
+                                    setEditingId(null); 
+                                  }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg shadow-blue-100">儲存變更</button>
+                                </div>
+                              </div>
+                            ) : ( <div className="flex justify-between items-start gap-4">
+                                <div className="space-y-4 flex-1">
+                                  <div className="flex items-center gap-4 flex-wrap">
+                                    <h4 className="text-3xl font-black text-slate-800 leading-tight tracking-tight">{item.spot}</h4>
+                                    <div className="flex gap-2">
+                                      <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm shadow-blue-100 hover:bg-blue-600 hover:text-white"><MapPin size={14} /> 地圖</a>
+                                      {(item.note || item.imageUrl) && <div className={`px-2 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-black uppercase ${isExpanded ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-400'}`}><StickyNote size={12}/> {isExpanded ? '已展開' : '細節'}</div>}
+                                    </div>
+                                  </div>
+                                  {isExpanded && (
+                                    <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
+                                      {item.imageUrl && (
+                                        <div className="relative group/img overflow-hidden rounded-2xl border border-white shadow-sm max-w-md">
+                                          <img src={item.imageUrl} alt={item.spot} className="w-full max-w-md h-auto rounded-2xl shadow-sm border border-white cursor-zoom-in" onError={e => e.target.style.display='none'} onClick={(e) => { e.stopPropagation(); window.open(item.imageUrl, '_blank'); }} />
+                                        </div>
+                                      )}
+                                      <p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{renderTextWithLinks(item.note) || "暫無說明內容"}</p>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col gap-2 transition-all">
+                                  <button onClick={(e) => { e.stopPropagation(); setEditingId(item.id); setEditData({...item}); }} className="p-3 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all shadow-sm"><Edit3 size={20} /></button>
+                                  <button onClick={async (e) => { e.stopPropagation(); if(confirm('確定刪除？')) { const updated = itineraryData.days[activeDay].spots.filter(s => s.id !== item.id); await updateItinField(`days.${activeDay}.spots`, updated); } }} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all shadow-sm"><Trash2 size={20}/></button>
+                                </div>
+                            </div> )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(!itineraryData?.days?.[activeDay]?.spots?.length) && ( <div className="py-24 text-center border-4 border-dashed border-slate-50 rounded-[3rem]"><Calendar className="text-slate-100 mx-auto mb-6 opacity-20" size={80} /><p className="text-slate-300 font-black text-xl italic text-center">今天還沒有安排任何行程！</p></div> )}
+                  </div>
+                </div>
+              </div>
             ) : activeTab === 'weather' ? <WeatherMaster tripInfo={tripInfo} /> : activeTab === 'expenses' ? <ExpenseMaster itineraryData={itineraryData} updateItinField={updateItinField} /> : activeTab === 'checklist' ? <ChecklistMaster itineraryData={itineraryData} updateItinField={updateItinField} /> : <CurrencyMaster itineraryData={itineraryData} updateItinField={updateItinField} /> }
           </main>
 
