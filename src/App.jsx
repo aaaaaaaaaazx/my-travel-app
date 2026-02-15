@@ -23,20 +23,21 @@ import {
   Sun, Cloud, CloudRain, CloudLightning, Snowflake, Smartphone, Shirt, Bath, Pill, FileText, Package,
   Calculator, Equal, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, StickyNote, Eye, EyeOff,
   Image as ImageIcon, ExternalLink, Wallet, Utensils, Home, Car, ShoppingBag, MoreHorizontal, Receipt, Check,
-  Luggage
+  Luggage, Lock, User, LogIn
 } from 'lucide-react';
 
 /**
- * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.14)
+ * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.15)
  * ------------------------------------------------
- * V4.2 媒體與連結強化版：
- * 1. 景點圖片支援：新增與編輯模式皆支援圖片網址，並具備點擊放大檢視。
- * 2. 備註連結偵測：自動識別備註內的 https 連結並轉為可點擊標籤。
- * 3. 資料恢復機制：固定 fAppId 為 'travel-yeh' 以銜接原有資料。
- * 4. 編輯與清單：全面修復 Spots 與 Checklist 的修改儲存功能。
+ * V4.3 帳密驗證強化版：
+ * 1. 登入安全守衛：新增驗證頁面，需輸入帳號 abc / 密碼 abc 才能進入。
+ * 2. 景點圖片支援：新增與編輯模式皆支援圖片網址，並具備點擊放大檢視。
+ * 3. 備註連結偵測：自動識別備註內的 https 連結並轉為可點擊標籤。
+ * 4. 資料恢復機制：固定 fAppId 為 'travel-yeh' 以銜接原有資料。
+ * 5. 編輯與清單：全面修復 Spots 與 Checklist 的修改儲存功能。
  */
 
-const VERSION_INFO = "旗艦穩定版 V4.2 - 2026/02/14 18:45";
+const VERSION_INFO = "旗艦穩定版 V4.3 - 2026/02/15 18:40";
 
 // --- 靜態資料配置 ---
 const currencyNames = {
@@ -75,7 +76,6 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
 const appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const fAuth = getAuth(appInstance);
 const fDb = getFirestore(appInstance);
-// 💡 重要：鎖定 appId 為 travel-yeh 以恢復原始資料
 const fAppId = 'travel-yeh';
 
 // --- 工具函數 ---
@@ -101,7 +101,6 @@ const getDayOfWeek = (baseDate, dayOffset) => {
 
 const renderTextWithLinks = (text) => {
   if (!text) return null;
-  // 建立網址偵測正則
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return parts.map((part, i) => {
@@ -353,7 +352,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
             <div className="relative">
               <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} />
               <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div>
             </div>
           </div>
           <div className="flex justify-center md:col-span-1">
@@ -398,7 +397,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：行李清單 ---
+// --- 子組件：行李清單 (互動修改版) ---
 const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   const checklist = Array.isArray(itineraryData?.checklist) ? itineraryData.checklist : [];
   const [newItemText, setNewItemText] = useState('');
@@ -467,7 +466,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
               </div>
             )}
             <div className="space-y-3">
-              {groupedItems[cat.id]?.map(item => (
+              {(groupedItems[cat.id] || []).map(item => (
                 <div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>
                   {editingItemId === item.id ? (
                     <div className="flex items-center gap-2 flex-1">
@@ -496,8 +495,85 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
+// --- 子組件：登入視窗 ---
+const LoginView = ({ onLoginSuccess }) => {
+  const [acct, setAcct] = useState('');
+  const [pwd, setPwd] = useState('');
+  const [err, setErr] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (acct === 'abc' && pwd === 'abc') {
+      onLoginSuccess();
+    } else {
+      setErr('帳號或密碼錯誤，請重新輸入。');
+      setPwd('');
+    }
+  };
+
+  return (
+    <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-6 font-sans">
+      <div className="max-w-md w-full animate-fade-in">
+        <div className="text-center mb-10">
+          <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl rotate-12">
+            <Plane size={40} />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">歡迎回來</h2>
+          <p className="text-slate-400 font-bold mt-2">請登入以存取您的雲端旅程</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">帳號</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <input 
+                required 
+                type="text" 
+                placeholder="請輸入帳號" 
+                value={acct} 
+                onChange={e => setAcct(e.target.value)} 
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold" 
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">密碼</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+              <input 
+                required 
+                type="password" 
+                placeholder="請輸入密碼" 
+                value={pwd} 
+                onChange={e => setPwd(e.target.value)} 
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold" 
+              />
+            </div>
+          </div>
+
+          {err && (
+            <div className="flex items-center gap-2 text-red-500 text-xs font-bold bg-red-50 p-3 rounded-xl animate-pulse">
+              <AlertCircle size={14} /> {err}
+            </div>
+          )}
+
+          <button 
+            type="submit" 
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl shadow-blue-100 transition-all active:scale-95"
+          >
+            <LogIn size={20} /> 立即登入
+          </button>
+        </form>
+        <p className="text-center text-slate-300 text-[10px] font-bold mt-8 uppercase tracking-widest">{VERSION_INFO}</p>
+      </div>
+    </div>
+  );
+};
+
 // --- 主 App 組件 ---
 const App = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [view, setView] = useState('home');
   const [activeTab, setActiveTab] = useState('itinerary');
   const [user, setUser] = useState(null);
@@ -540,7 +616,7 @@ const App = () => {
     setFavicon();
   }, []);
 
-  // 🔐 身份驗證流程
+  // 🔐 身份驗證流程 (Firebase Auth)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -564,17 +640,17 @@ const App = () => {
 
   // 📊 資料庫監聽
   useEffect(() => {
-    if (!user || !fDb) return;
+    if (!user || !fDb || !isLoggedIn) return;
     const tripsRef = collection(fDb, 'artifacts', fAppId, 'public', 'data', 'trips');
     return onSnapshot(tripsRef, (snapshot) => {
       setTrips(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
     }, (err) => {
       if (err.code === 'permission-denied') setAiStatus({ type: 'error', message: '存取權限受限，請重新整理。' });
     });
-  }, [user]);
+  }, [user, isLoggedIn]);
 
   useEffect(() => {
-    if (!user || !tripId || !fDb) return;
+    if (!user || !tripId || !fDb || !isLoggedIn) return;
     const itinRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'itineraries', tripId);
     const unsubItin = onSnapshot(itinRef, (snap) => {
       if (snap.exists()) {
@@ -593,7 +669,7 @@ const App = () => {
     const tripRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'trips', tripId);
     const unsubTrip = onSnapshot(tripRef, (snap) => { if (snap.exists()) setTripInfo(snap.data()); });
     return () => { unsubItin(); unsubTrip(); };
-  }, [user, tripId]);
+  }, [user, tripId, isLoggedIn]);
 
   const updateItinField = async (field, value) => {
     if (!user || !tripId) return;
@@ -625,6 +701,11 @@ const App = () => {
       setTripId(newId);
     } catch (e) { console.error(e); } finally { setIsLoading(false); }
   };
+
+  // 🔒 登入驗證邏輯
+  if (!isLoggedIn) {
+    return <LoginView onLoginSuccess={() => setIsLoggedIn(true)} />;
+  }
 
   if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-2" size={48} /><p className="text-slate-500 font-bold italic tracking-widest leading-none">正在啟動彥麟的冒險引擎...</p></div>;
 
