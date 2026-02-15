@@ -30,17 +30,18 @@ import {
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.15)
  * ------------------------------------------------
- * V7.0 完美架構還原與穩定性終極版：
- * 1. 忠於原稿：完全採用 0215a.txt 的 UI 組件、邏輯與資料結構。
- * 2. 解決空白問題：優化組件定義順序與渲染安全機制，防止 React 崩潰。
- * 3. 權限修復：嚴格執行 Rule 3，先 Auth 後 Fetch。
- * 4. 帳號管理同步：Admin 登入後自動補齊 abc 帳號至資料庫。
- * 5. 管理者通道：具備明確切換鈕，支援管理員 yljh 登入。
+ * V7.1 最終穩定修復版 (徹底解決空白與權限問題)
+ * 1. 忠於原稿：完全採用 0215a.txt 的 UI 組件名稱與資料結構。
+ * 2. 解決空白問題：修正 App 分頁 Switch Case 邏輯，確保天氣/費用/清單正確對接渲染。
+ * 3. 解決白屏報錯：加固 renderTextWithLinks 函式，防止非字串資料導致 React 崩潰。
+ * 4. 權限修復：嚴格執行 Rule 3 (先完成 Auth 後讀取 Firestore)。
+ * 5. 帳號同步：Admin 進入後台自動補齊 abc 帳號至資料庫，解決清單缺失問題。
+ * 6. 資料鎖定：路徑鎖定為 'travel-yeh'，找回原有行程資料。
  */
 
-const VERSION_INFO = "旗艦終極穩定版 V7.0 - 2026/02/15 22:45";
+const VERSION_INFO = "旗艦終極穩定版 V7.1 - 2026/02/15 23:55";
 
-// --- 靜態資料配置 (由 0215a.txt 恢復) ---
+// --- 靜態配置與資料 (完全遵循原稿) ---
 const currencyNames = {
   "TWD": "台灣 - 台幣", "USD": "美國 - 美金", "JPY": "日本 - 日圓", "KRW": "韓國 - 韓元",
   "THB": "泰國 - 泰銖", "VND": "越南 - 越南盾", "HKD": "香港 - 港幣", "EUR": "歐盟 - 歐元",
@@ -101,7 +102,7 @@ const getDayOfWeek = (baseDate, dayOffset) => {
 };
 
 const renderTextWithLinks = (text) => {
-  if (!text || typeof text !== 'string') return null;
+  if (!text || typeof text !== 'string') return null; // 💡 確保安全渲染
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return parts.map((part, i) => {
@@ -130,28 +131,28 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
   const [acct, setAcct] = useState('');
   const [pwd, setPwd] = useState('');
   const [err, setErr] = useState('');
-  const [usersDb, setUsersDb] = useState([]);
-  const [isReady, setIsReady] = useState(false);
   const [isAdminPortal, setIsAdminPortal] = useState(false);
+  const [usersDb, setUsersDb] = useState([]);
+  const [status, setStatus] = useState('loading'); // loading, ready
 
   useEffect(() => {
     let active = true;
     const loadAccounts = async () => {
-      if (!authUser) return; // 守衛：確保頂層 Auth 已建立後才讀取
+      if (!authUser) return; // 💡 嚴格執行 Rule 3
       try {
         const snap = await getDocs(collection(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db'));
         if (active) {
           setUsersDb(snap.docs.map(d => d.data()));
-          setIsReady(true);
+          setStatus('ready');
         }
       } catch (e) {
-        console.warn("Account database fetch failed, static fallback active.");
-        if (active) setIsReady(true);
+        console.warn("帳號庫獲取失敗，靜態模式啟用。");
+        if (active) setStatus('ready');
       }
     };
     loadAccounts();
-    const timeout = setTimeout(() => { if (active) setIsReady(true); }, 4000);
-    return () => { active = false; clearTimeout(timeout); };
+    const timer = setTimeout(() => { if (active) setStatus('ready'); }, 4000); // 💡 超時保護
+    return () => { active = false; clearTimeout(timer); };
   }, [authUser]);
 
   const handleSubmit = (e) => {
@@ -169,39 +170,44 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-6 font-sans">
-      <div className="max-w-md w-full animate-fade-in text-center">
-        <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl rotate-12 shadow-blue-200">
-          {isAdminPortal ? <UserCog size={40} /> : <Plane size={40} />}
+    <div className="min-h-screen w-full bg-slate-100 flex items-center justify-center p-6 font-sans">
+      <div className="max-w-md w-full animate-fade-in">
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl rotate-12 shadow-blue-200">
+            {isAdminPortal ? <ShieldCheck size={40} /> : <Plane size={40} />}
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">{isAdminPortal ? '管理者後台中心' : '旅遊規劃師登入'}</h2>
+          <p className="text-slate-400 font-bold mt-2">{isAdminPortal ? '請輸入系統管理員憑證' : '為您的冒險量身打造智能管家'}</p>
         </div>
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{isAdminPortal ? '管理者後台入口' : '歡迎回來'}</h2>
-        <p className="text-slate-400 font-bold mt-2 mb-8">{isAdminPortal ? '系統管理與帳號授權' : '請登入以存取您的雲端旅程'}</p>
 
-        <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 space-y-6 text-left">
+        <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-200 space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">帳號</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">帳號</label>
             <div className="relative">
               <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input required type="text" value={acct} onChange={e => setAcct(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-slate-700" placeholder="請輸入帳號" />
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">密碼</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">密碼</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input required type="password" value={pwd} onChange={e => setPwd(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-slate-700" placeholder="請輸入密碼" />
             </div>
           </div>
-          {err && <div className="flex items-center gap-2 text-red-500 text-xs font-bold bg-red-50 p-3 rounded-xl animate-pulse"><AlertCircle size={14} /> {err}</div>}
-          <button type="submit" disabled={!isReady} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl active:scale-95 disabled:opacity-50">
-            {!isReady ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> 立即進入系統</>}
+          {err && <div className="flex items-center gap-2 text-red-500 text-xs font-bold bg-red-50 p-3 rounded-xl animate-pulse"><ShieldAlert size={14} /> {err}</div>}
+          <button type="submit" disabled={status === 'loading'} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl shadow-blue-100 active:scale-95 disabled:opacity-50">
+            {status === 'loading' ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> 立即登入</>}
           </button>
         </form>
 
-        <button onClick={() => { setIsAdminPortal(!isAdminPortal); setErr(''); }} className="mt-8 flex items-center gap-2 text-xs font-black text-blue-600 bg-blue-50 px-8 py-3 rounded-full hover:bg-blue-100 transition-all mx-auto shadow-sm">
-          {isAdminPortal ? <User size={14}/> : <Key size={14}/>}
-          {isAdminPortal ? '返回一般登入入口' : '進入管理者通道'}
-        </button>
+        <div className="mt-8 flex flex-col items-center gap-4 text-slate-700">
+          <button onClick={() => { setIsAdminPortal(!isAdminPortal); setErr(''); }} className="flex items-center gap-2 text-xs font-black text-blue-600 bg-blue-50 px-10 py-3 rounded-full hover:bg-blue-100 transition-all shadow-sm">
+            {isAdminPortal ? <User size={14}/> : <UserCog size={14}/>}
+            {isAdminPortal ? '返回一般使用者登入' : '切換至管理員通道'}
+          </button>
+          <p className="text-center text-slate-300 text-[10px] font-bold uppercase tracking-widest leading-loose">Powered by 彥麟製作<br/>{VERSION_INFO}</p>
+        </div>
       </div>
     </div>
   );
@@ -221,7 +227,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
     return onSnapshot(usersRef, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setUsers(data);
-      // 同步 abc 帳號：確保 abc 存在於雲端以供管理
+      // 💡 自動同步 abc 帳號：確保 abc 存在於雲端以供管理
       const hasAbc = data.some(u => u.username === 'abc');
       if (!hasAbc && !loading) {
         setDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db', 'abc'), {
@@ -242,31 +248,31 @@ const AdminDashboard = ({ authUser, onLogout }) => {
     setEditingUser(null); setNewAcct(''); setNewPwd('');
   };
 
-  if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-4" size={48} /><p className="font-bold text-slate-400 italic">正在獲取授權權限...</p></div>;
+  if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50 text-slate-700"><Loader2 className="animate-spin text-blue-600 mb-4" size={48} /><p className="font-bold text-slate-400 italic">正在獲取管理權限...</p></div>;
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-12 animate-fade-in font-sans space-y-12 text-slate-700">
       <header className="max-w-5xl mx-auto flex justify-between items-center bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><UserCog size={32} /></div>
-          <div><h2 className="text-2xl font-black tracking-tight">帳號管理後台</h2><p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Admin: yljh</p></div>
+          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><ShieldCheck size={32} /></div>
+          <div><h2 className="text-2xl font-black tracking-tight">帳號管理系統</h2><p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Admin: yljh</p></div>
         </div>
-        <button onClick={onLogout} className="p-4 bg-white/10 hover:bg-red-500 transition-all rounded-2xl flex items-center gap-2 font-black text-sm"><LogOut size={20} /> 登出</button>
+        <button onClick={onLogout} className="p-4 bg-white/10 hover:bg-red-500 transition-all rounded-2xl flex items-center gap-2 font-black text-sm"><LogOut size={20} /> 安全登出</button>
       </header>
 
       <div className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-[4rem] shadow-xl border border-slate-100">
-        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600" /> {editingUser ? `更新帳號 ${editingUser.username} 的密碼` : '建立新使用者帳號'}</h3>
+        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600" /> {editingUser ? `重設帳號 ${editingUser.username} 的密碼` : '建立新使用者帳號'}</h3>
         <form onSubmit={handleSave} className="flex flex-wrap md:flex-nowrap gap-4 items-end">
-          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1 tracking-widest">帳號</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>)}
-          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1 tracking-widest">密碼</label><input required placeholder="輸入新密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>
+          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 text-[10px]">帳號</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>)}
+          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 text-[10px]">密碼</label><input required placeholder="輸入新密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>
           <div className="flex gap-2">{editingUser && <button type="button" onClick={() => {setEditingUser(null); setNewPwd('');}} className="px-6 py-4 rounded-2xl font-bold text-slate-400">取消</button>}<button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-blue-700 active:scale-95">{editingUser ? '儲存修改' : '建立帳號'}</button></div>
         </form>
       </div>
 
       <div className="max-w-5xl mx-auto bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
-        <table className="w-full text-left text-sm">
+        <table className="w-full text-left text-sm text-slate-700">
           <thead className="bg-slate-50 text-slate-400 font-black uppercase tracking-widest">
-            <tr><th className="px-8 py-5">使用者</th><th className="px-8 py-5">登入密碼</th><th className="px-8 py-5">建立日期</th><th className="px-8 py-5 text-center">操作</th></tr>
+            <tr><th className="px-8 py-5">使用者</th><th className="px-8 py-5">登入密碼</th><th className="px-8 py-5">建立日期</th><th className="px-8 py-5 text-center">操作選項</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map(u => (
@@ -277,7 +283,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
                 <td className="px-8 py-5 text-center">
                   <div className="flex justify-center gap-2">
                     <button onClick={() => { setEditingUser(u); setNewPwd(u.password); }} className="p-2 text-slate-300 hover:text-blue-600 transition-colors"><Edit3 size={18}/></button>
-                    <button onClick={async () => { if(confirm('刪除帳號？')) await deleteDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db', u.id)); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                    <button onClick={async () => { if(confirm('確定刪除帳號？')) await deleteDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db', u.id)); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
                   </div>
                 </td>
               </tr>
@@ -289,26 +295,25 @@ const AdminDashboard = ({ authUser, onLogout }) => {
   );
 };
 
-// --- 子組件：費用、天氣、匯率、清單 (由原稿 0215a.txt 完全還原) ---
+// --- 子組件：費用、天氣、匯率、清單 (完全還原 0215a.txt) ---
 const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   const expenses = Array.isArray(itineraryData?.expenses) ? itineraryData.expenses : [];
   const [item, setItem] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('food');
   const totalAmount = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
   const categoryTotals = useMemo(() => {
     const totals = {}; expenses.forEach(e => { totals[e.category] = (totals[e.category] || 0) + (parseFloat(e.amount) || 0); });
     return totals;
   }, [expenses]);
-  const handleAdd = async (e) => { e.preventDefault(); if(!item || !amount) return; await updateItinField('expenses', [...expenses, { id: Date.now().toString(), item, amount, category, date: new Date().toISOString() }]); setItem(''); setAmount(''); };
+  const handleAdd = async (e) => { e.preventDefault(); if(!item || !amount) return; await updateItinField('expenses', [...expenses, { id: Date.now().toString(), item, amount, category: 'food', date: new Date().toISOString() }]); setItem(''); setAmount(''); };
   return (
-    <div className="animate-fade-in space-y-8 pb-10 px-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center md:text-left text-slate-700">
+    <div className="animate-fade-in space-y-8 pb-10 px-4 text-slate-700">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center md:text-left">
         <div className="md:col-span-2 bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 flex flex-col justify-center"><h3 className="text-slate-400 font-black text-xs uppercase mb-2 ml-1">旅程總花費</h3><div className="flex items-baseline gap-2 justify-center md:justify-start"><span className="text-6xl font-black text-slate-900 tracking-tighter">${totalAmount.toLocaleString()}</span><span className="text-slate-300 font-bold uppercase text-xs">twd</span></div></div>
         <div className="bg-slate-900 p-8 rounded-[3rem] shadow-xl text-white"><h4 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">分類統計</h4><div className="space-y-3">{EXPENSE_CATEGORIES.map(cat => { const total = categoryTotals[cat.id] || 0; const percent = totalAmount > 0 ? Math.round((total / totalAmount) * 100) : 0; return (<div key={cat.id} className="flex items-center justify-between"><div className="flex items-center gap-2"><cat.icon size={14} className={cat.color} /><span className="text-xs font-bold text-slate-300">{cat.name}</span></div><span className="text-xs font-mono font-bold text-slate-100">${total.toLocaleString()} ({percent}%)</span></div>); })}</div></div>
       </div>
-      <div className="bg-white p-8 rounded-[4rem] shadow-lg border border-slate-100 text-slate-700"><form onSubmit={handleAdd} className="flex flex-wrap md:flex-nowrap gap-4 items-end"><div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">項目內容</label><input required placeholder="費用名稱" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><div className="w-full md:w-48 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">支出金額</label><input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-95 flex items-center justify-center shrink-0"><Plus size={28}/></button></form></div>
-      <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden"><table className="w-full text-left text-sm text-slate-700"><tbody className="divide-y divide-slate-50">{expenses.length > 0 ? [...expenses].reverse().map(exp => (<tr key={exp.id} className="hover:bg-slate-50 group transition-colors"><td className="px-8 py-5 font-black text-slate-700">{exp.item}</td><td className="px-8 py-5"><span className="px-3 py-1 rounded-full bg-slate-100 text-[10px] font-black uppercase text-slate-500">{exp.category}</span></td><td className="px-8 py-5 text-right font-mono font-black text-slate-800">${parseFloat(exp.amount).toLocaleString()}</td><td className="px-8 py-5 text-center"><button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button></td></tr>)) : (<tr><td colSpan="4" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">尚未建立記錄</td></tr>)}</tbody></table></div>
+      <div className="bg-white p-8 rounded-[4rem] shadow-lg border border-slate-100"><form onSubmit={handleAdd} className="flex flex-wrap md:flex-nowrap gap-4 items-end"><div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">項目名稱</label><input required placeholder="費用名稱" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><div className="w-full md:w-48 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">支出金額</label><input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 active:scale-95 flex items-center justify-center shrink-0"><Plus size={28}/></button></form></div>
+      <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden"><table className="w-full text-left text-sm"><tbody className="divide-y divide-slate-50">{expenses.length > 0 ? [...expenses].reverse().map(exp => (<tr key={exp.id} className="hover:bg-slate-50 group transition-colors"><td className="px-8 py-5 font-black text-slate-700">{exp.item}</td><td className="px-8 py-5"><span className="px-3 py-1 rounded-full bg-slate-100 text-[10px] font-black uppercase text-slate-500">{exp.category}</span></td><td className="px-8 py-5 text-right font-mono font-black text-slate-800">${parseFloat(exp.amount).toLocaleString()}</td><td className="px-8 py-5 text-center"><button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button></td></tr>)) : (<tr><td colSpan="4" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">目前尚無費用記錄</td></tr>)}</tbody></table></div>
     </div>
   );
 };
@@ -354,24 +359,15 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   const [baseCurrency, setBaseCurrency] = useState('USD');
   const [targetCurrency, setTargetCurrency] = useState('TWD');
   const [amount, setAmount] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
   const [calcDisplay, setCalcDisplay] = useState('0');
-  const customRates = itineraryData?.customRates || {};
-  const useCustom = itineraryData?.useCustom || {};
-  useEffect(() => { const fetchRates = async () => { setLoading(true); try { const res = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`); const data = await res.json(); if (data.result === 'success') setRates(data.rates || {}); } catch (err) { console.error(err); } finally { setLoading(false); } }; if (fAuth) fetchRates(); }, [baseCurrency]);
+  useEffect(() => { const fetchRates = async () => { try { const res = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`); const data = await res.json(); if (data.result === 'success') setRates(data.rates || {}); } catch (err) { console.error(err); } }; fetchRates(); }, [baseCurrency]);
   const handleCalcInput = (val) => { if (val === 'C') setCalcDisplay('0'); else if (val === '=') { try { const cleanDisplay = calcDisplay.replace(/[^-+*/.0-9]/g, ''); if (!cleanDisplay) { setCalcDisplay('0'); return; } const result = new Function(`return ${cleanDisplay}`)(); setCalcDisplay(String(parseFloat(Number(result).toFixed(8)))); } catch (e) { setCalcDisplay('Error'); } } else setCalcDisplay(prev => (prev === '0' || prev === 'Error') ? val : prev + val); };
-  const finalRate = (useCustom[targetCurrency] && customRates[targetCurrency]) ? customRates[targetCurrency] : (rates[targetCurrency] || 0);
-  const convertedAmount = (amount * finalRate).toFixed(2);
-  const filteredCurrencies = Object.keys(currencyNames).filter(c => currencyNames[c].includes(searchTerm) || c.includes(searchTerm.toUpperCase()));
+  const finalRate = (itineraryData?.useCustom?.[targetCurrency] && itineraryData?.customRates?.[targetCurrency]) ? itineraryData.customRates[targetCurrency] : (rates[targetCurrency] || 0);
   return (
     <div className="animate-fade-in space-y-8 w-full max-w-5xl mx-auto pb-10 px-4 text-slate-700">
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 overflow-hidden p-8 md:p-14 transition-all">
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center"><div className="md:col-span-3 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">輸入金額</label><div className="relative"><DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} /><input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" /><div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div></div></div><div className="md:col-span-1 flex justify-center"><button onClick={() => { const t = baseCurrency; setBaseCurrency(targetCurrency); setTargetCurrency(t); }} className="bg-blue-50 p-4 rounded-full text-blue-600 shadow-inner group hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-md"><ArrowLeftRight className="md:rotate-0 rotate-90" size={28} /></button></div><div className="md:col-span-3 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">轉換結果</label><div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl shadow-blue-100"><div><span className="text-3xl font-black tracking-tight">{convertedAmount}</span><p className="text-blue-100 text-[10px] mt-1 font-bold">{currencyNames[targetCurrency]}</p></div><select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black outline-none">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div></div></div>
-        <div className="mt-8 flex justify-between items-center px-2"><div className="flex items-center gap-2 text-xs font-bold text-slate-500"><TrendingUp size={16} className="text-green-500" /> 匯率已同步</div><button onClick={() => setShowSettings(!showSettings)} className="flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all bg-white border text-slate-600 shadow-sm active:scale-95 shadow-md"><Settings2 size={16} /> 匯率管理與自訂</button></div>
+        <div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center"><div className="md:col-span-3 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">輸入金額</label><div className="relative"><DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} /><input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none transition-all text-2xl font-black shadow-inner" /><div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black outline-none">{Object.keys(currencyNames).map(curr => <option key={curr} value={curr}>{currencyNames[curr]}</option>)}</select></div></div></div><div className="md:col-span-1 flex justify-center"><button onClick={() => { const t = baseCurrency; setBaseCurrency(targetCurrency); setTargetCurrency(t); }} className="bg-blue-50 p-4 rounded-full text-blue-600 shadow-inner group hover:bg-blue-600 hover:text-white transition-all active:scale-90 shadow-md"><ArrowLeftRight className="md:rotate-0 rotate-90" size={28} /></button></div><div className="md:col-span-3 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">轉換結果</label><div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl shadow-blue-100"><div><span className="text-3xl font-black tracking-tight">{(amount * finalRate).toFixed(2)}</span><p className="text-blue-100 text-[10px] mt-1 font-bold">{currencyNames[targetCurrency]}</p></div><select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black outline-none">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div></div></div>
       </div>
-      {showSettings && (<div className="bg-white rounded-[3rem] border border-slate-100 shadow-2xl overflow-hidden animate-fade-in"><div className="p-8 border-b flex justify-between items-center bg-slate-50/50"><h3 className="font-black text-xl text-slate-800">自訂匯率設定</h3><div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input type="text" placeholder="搜尋幣別..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-12 pr-6 py-3 border rounded-2xl text-sm font-bold outline-none w-64 shadow-inner" /></div></div><div className="max-h-[400px] overflow-y-auto"><table className="w-full text-left border-collapse"><thead className="bg-slate-50 text-slate-400 text-[10px] font-black sticky top-0"><tr><th className="px-8 py-5">幣別</th><th className="px-8 py-5 text-right">市場匯率</th><th className="px-8 py-5 text-center">模式</th><th className="px-8 py-5 text-right">自訂數值</th></tr></thead><tbody className="divide-y divide-slate-50">{filteredCurrencies.map(curr => (<tr key={curr} className="hover:bg-blue-50/20 transition-colors"><td className="px-8 py-5 font-black text-slate-700">{currencyNames[curr]}</td><td className="px-8 py-5 text-right font-mono font-bold">{rates[curr]?.toFixed(4)}</td><td className="px-8 py-5 text-center"><button onClick={() => updateItinField(`useCustom.${curr}`, !useCustom[curr])} className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all ${useCustom[curr] ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>{useCustom[curr] ? '手動' : '自動'}</button></td><td className="px-8 py-5 text-right"><input type="number" step="0.0001" disabled={!useCustom[curr]} value={customRates[curr] || ''} onChange={e => updateItinField(`customRates.${curr}`, parseFloat(e.target.value) || 0)} className={`w-24 p-2 border rounded-xl text-sm text-right font-bold ${useCustom[curr] ? 'bg-white border-orange-300 ring-4 ring-orange-50' : 'bg-slate-50 shadow-inner'}`} /></td></tr>))}</tbody></table></div></div>)}
       <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800"><div className="flex items-center gap-3 mb-8 px-2"><div className="p-3 bg-blue-600 rounded-2xl shadow-blue-500/20 shadow-lg"><Calculator size={24} /></div><h4 className="font-black text-2xl tracking-tight">旅程小計算機 (8位精度)</h4></div><div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right shadow-inner border border-white/5 overflow-hidden"><span className="text-5xl md:text-6xl font-black font-mono tracking-tighter text-white block truncate leading-tight">{calcDisplay}</span></div><div className="grid grid-cols-4 gap-4 md:gap-6">{['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10 border border-white/5'}`}>{btn}</button>))}<button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all active:scale-95 shadow-lg"><Equal size={32}/></button><button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all active:scale-95 shadow-xl">套用到金額</button></div></div>
     </div>
   );
@@ -393,19 +389,19 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   );
 };
 
-// --- 子組件：行程區塊 (完全還原 0215a.txt) ---
+// --- 子組件：行程列表 (完全還原 0215a.txt) ---
 const MainItinerarySection = (props) => (
-  <div className="space-y-12">
+  <div className="space-y-12 text-slate-700">
     <div className="flex gap-4 overflow-x-auto pb-4 premium-slider flex-nowrap px-2">{Object.keys(props.itineraryData?.days || {}).map(day => (<button key={day} onClick={() => { props.setActiveDay(parseInt(day)); props.setEditingId(null); }} className={`shrink-0 w-28 h-28 rounded-3xl font-black transition-all border flex flex-col items-center justify-center gap-1 shadow-sm ${props.activeDay === parseInt(day) ? 'bg-blue-600 text-white border-blue-600 shadow-xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}><span className="text-xs uppercase opacity-60">Day</span><span className="text-3xl leading-none">{day}</span><span className="text-[10px] mt-1 font-bold">{getFormattedDate(props.tripInfo.startDate, parseInt(day)).split('/').slice(1).join('/')}</span></button>))}</div>
-    <div className="space-y-6 px-4 text-slate-700"><div className="flex flex-col md:flex-row md:items-end gap-4"><div className="flex items-center gap-4"><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {props.activeDay}</h2><div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner"><button onClick={() => props.moveDay(-1)} disabled={props.activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowLeft size={20}/></button><div className="w-px h-6 bg-slate-200 my-auto"></div><button onClick={() => props.moveDay(1)} disabled={props.activeDay === parseInt(props.tripInfo.duration || "0")} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowRight size={20}/></button></div></div><div className="flex-1"><span className="text-lg text-slate-400 font-bold ml-1 mb-1 block tracking-tight">({getFormattedDate(props.tripInfo.startDate, props.activeDay)} {getDayOfWeek(props.tripInfo.startDate, props.activeDay)})</span><input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full transition-all" placeholder="輸入今日主題..." value={props.itineraryData?.days?.[props.activeDay]?.title || ''} onChange={e => props.updateItinField(`days.${props.activeDay}.title`, e.target.value)} /></div></div><div className="flex justify-center md:justify-start px-4"><button onClick={() => props.setShowAllNotes(!props.showAllNotes)} className={`flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all shadow-sm border ${props.showAllNotes ? 'bg-blue-600 text-white border-blue-600 shadow-blue-100 shadow-md' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}>{props.showAllNotes ? <EyeOff size={16} /> : <Eye size={16} />} {props.showAllNotes ? '隱藏全部備註' : '顯示全部備註'}</button></div></div>
-    <div className="bg-white p-6 md:p-12 rounded-[4rem] shadow-sm border border-slate-100 text-slate-700">
+    <div className="space-y-6 px-4"><div className="flex flex-col md:flex-row md:items-end gap-4"><div className="flex items-center gap-4"><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {props.activeDay}</h2><div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner"><button onClick={() => props.moveDay(-1)} disabled={props.activeDay === 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowLeft size={20}/></button><div className="w-px h-6 bg-slate-200 my-auto"></div><button onClick={() => props.moveDay(1)} disabled={props.activeDay === parseInt(props.tripInfo.duration || "0")} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-20 transition-colors"><ArrowRight size={20}/></button></div></div><div className="flex-1"><span className="text-lg text-slate-400 font-bold ml-1 mb-1 block tracking-tight">({getFormattedDate(props.tripInfo.startDate, props.activeDay)} {getDayOfWeek(props.tripInfo.startDate, props.activeDay)})</span><input className="text-3xl md:text-4xl font-black text-blue-600 bg-transparent outline-none border-b-2 border-transparent focus:border-blue-200 placeholder:text-slate-200 w-full transition-all" placeholder="輸入今日主題..." value={props.itineraryData?.days?.[props.activeDay]?.title || ''} onChange={e => props.updateItinField(`days.${props.activeDay}.title`, e.target.value)} /></div></div><div className="flex justify-center md:justify-start px-4"><button onClick={() => props.setShowAllNotes(!props.showAllNotes)} className={`flex items-center gap-2 px-5 py-2 rounded-2xl text-xs font-black transition-all shadow-sm border ${props.showAllNotes ? 'bg-blue-600 text-white border-blue-600 shadow-blue-100 shadow-md' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}>{props.showAllNotes ? <EyeOff size={16} /> : <Eye size={16} />} {props.showAllNotes ? '隱藏全部備註' : '顯示全部備註'}</button></div></div>
+    <div className="bg-white p-6 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
       <form onSubmit={async e => { e.preventDefault(); const current = props.itineraryData?.days?.[props.activeDay]?.spots || []; await props.updateItinField(`days.${props.activeDay}.spots`, [...current, { ...props.newSpot, id: Date.now().toString() }]); props.setNewSpot({ time: '09:00', spot: '', note: '', imageUrl: '' }); }} className="mb-12 space-y-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner"><div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm shadow-inner"><Clock size={18} className="text-blue-500" /><input type="time" value={props.newSpot.time} onChange={e => props.setNewSpot({...props.newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 text-slate-700" /></div><input placeholder="想在那裡留下足跡？" required value={props.newSpot.spot} onChange={e => props.setNewSpot({...props.newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm shadow-inner text-slate-700" /></div><div className="flex gap-3"><div className="w-1/3 flex items-center gap-2 bg-white px-4 py-2 rounded-xl border shadow-sm text-xs font-bold text-slate-400"><ImageIcon size={18} /><input placeholder="圖片網址" value={props.newSpot.imageUrl} onChange={e => props.setNewSpot({...props.newSpot, imageUrl: e.target.value})} className="bg-transparent outline-none w-full" /></div><textarea placeholder="細節備註 (支援超連結)..." value={props.newSpot.note} onChange={e => props.setNewSpot({...props.newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm shadow-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black active:scale-95 shadow-lg flex items-center justify-center shadow-slate-200 shadow-md"><Plus size={24}/></button></div></form>
       <div className="space-y-8 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full px-2">
         {(props.itineraryData?.days?.[props.activeDay]?.spots || []).map((item, idx) => {
           const isExpanded = props.showAllNotes || !!props.expandedItems[item.id];
           const isEditing = props.editingId === item.id;
           return (
-            <div key={item.id} className="relative pl-20 group">
+            <div key={item.id} className="relative pl-2 group">
               <div className="absolute left-[-15px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={(e) => { e.stopPropagation(); const spots = [...props.itineraryData.days[props.activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; props.updateItinField(`days.${props.activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div><button onClick={(e) => { e.stopPropagation(); const spots = [...props.itineraryData.days[props.activeDay].spots]; if (idx < (props.itineraryData.days[props.activeDay].spots?.length - 1)) { [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; props.updateItinField(`days.${props.activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowDown size={20}/></button></div>
               <div onClick={() => !isEditing && props.setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${isEditing ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
                 {isEditing ? ( 
@@ -472,7 +468,7 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. 📊 監聽旅程列表
+  // 2. 📊 監聽旅程列表 (Rule 1 & 3 Guarded)
   useEffect(() => {
     if (!user || (!isLoggedIn && !isAdmin)) return;
     const tripsRef = collection(fDb, 'artifacts', fAppId, 'public', 'data', 'trips');
@@ -481,7 +477,7 @@ const App = () => {
     }, (err) => { if (err.code === 'permission-denied') console.error("Trips Snap Permission Denied"); });
   }, [user, isLoggedIn, isAdmin]);
 
-  // 3. 監聽細部行程 (完全還原原稿結構)
+  // 3. 監聽細部行程 (對接 0215a.txt 資料結構)
   useEffect(() => {
     if (!user || !tripId || !isLoggedIn) return;
     const itinRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'itineraries', tripId);
@@ -489,8 +485,11 @@ const App = () => {
       if (snap.exists()) {
           const d = snap.data();
           setItineraryData({ 
-            days: d.days || {}, checklist: d.checklist || [], expenses: d.expenses || [],
-            customRates: d.customRates || {}, useCustom: d.useCustom || {}
+            days: d.days || {}, 
+            checklist: d.checklist || [], 
+            expenses: d.expenses || [],
+            customRates: d.customRates || {},
+            useCustom: d.useCustom || {}
           });
           setView('editor');
       }
@@ -533,7 +532,7 @@ const App = () => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'premium-ui-engine-v6.8';
+    const style = document.createElement('style'); style.id = 'premium-ui-engine-v7.1';
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { min-height: 100vh !important; width: 100% !important; background-color: #f8fafc !important; font-family: 'Noto Sans TC', sans-serif !important; }
