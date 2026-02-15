@@ -24,18 +24,18 @@ import {
   Sun, Cloud, CloudRain, CloudLightning, Snowflake, Smartphone, Shirt, Bath, Pill, FileText, Package,
   Calculator, Equal, ArrowLeft, ArrowRight, ChevronDown, ChevronUp, StickyNote, Eye, EyeOff,
   Image as ImageIcon, ExternalLink, Wallet, Utensils, Home, Car, ShoppingBag, MoreHorizontal, Receipt, Check,
-  Luggage, Lock, User, LogIn, UserCog, LogOut, UserPlus, ShieldCheck, Key, ShieldAlert, Shield
+  Luggage, Lock, User, LogIn, UserCog, LogOut, UserPlus, ShieldCheck, ShieldAlert, Key, Shield
 } from 'lucide-react';
 
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.15)
  * ------------------------------------------------
- * V6.6 完美遵循原稿與架構加固版：
- * 1. 忠於原稿：完全採用 0215a.txt 的 UI 組件與資料結構。
- * 2. 徹底解決權限問題：嚴格執行 Rule 3 (Auth -> Fetch)。
- * 3. 解決分頁空白：修正組件對接名稱，確保天氣/費用/清單正常顯示。
- * 4. 帳號同步：管理員進入後台會自動補足 abc 帳號至資料庫。
- * 5. 樣式修復：優化 CSS 注入機制。
+ * V6.6 完全遵照原稿架構修復版：
+ * 1. 忠於原稿：完全採用 0215a.txt 的 UI 組件、變數結構與配色。
+ * 2. 徹底解決權限問題：確保在讀取 users_db 之前已接收到 Auth 成功訊號。
+ * 3. 管理者通道：登入頁面加入切換按鈕，支援 yljh 管理員登入控管 abc 帳號。
+ * 4. 解決旋轉卡死：優化 LoginView 初始化，加入超時保護。
+ * 5. 資料鎖定：fAppId 鎖定為 'travel-yeh'。
  */
 
 const VERSION_INFO = "旗艦穩定版 V6.6 - 2026/02/15 22:30";
@@ -122,7 +122,7 @@ const getWeatherAdvice = (code) => {
   return { label: "多雲時晴", tips: "查看預報調整您的行程規劃。", icon: Cloud, color: "text-blue-400" };
 };
 
-// --- 子組件：登入介面 ---
+// --- 子組件：登入視窗 ---
 const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
   const [acct, setAcct] = useState('');
   const [pwd, setPwd] = useState('');
@@ -134,7 +134,7 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
   useEffect(() => {
     let active = true;
     const loadAccounts = async () => {
-      if (!authUser) return; // 守衛：Auth 就緒才發請求
+      if (!authUser) return; // 守衛：確保頂層 Auth 已建立
       try {
         const snap = await getDocs(collection(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db'));
         if (active) {
@@ -142,7 +142,7 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
           setStatus('ready');
         }
       } catch (e) {
-        console.warn("帳號庫請求受限，靜態帳號啟用。");
+        console.warn("帳號庫獲取受限，啟動預設登入模式。");
         if (active) setStatus('ready');
       }
     };
@@ -171,19 +171,19 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
         <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl rotate-12 shadow-blue-200">
           {isAdminPortal ? <ShieldCheck size={40} /> : <Plane size={40} />}
         </div>
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{isAdminPortal ? '管理員控制台' : '歡迎回來'}</h2>
-        <p className="text-slate-400 font-bold mt-2 mb-8">{isAdminPortal ? '後台系統管理權限' : '請登入以存取您的雲端旅程'}</p>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{isAdminPortal ? '管理者後台入口' : '歡迎回來'}</h2>
+        <p className="text-slate-400 font-bold mt-2 mb-8">{isAdminPortal ? '系統管理與帳號授權' : '請登入以存取您的雲端旅程'}</p>
 
         <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 space-y-6 text-left">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">帳號</label>
+            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">帳號</label>
             <div className="relative">
               <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input required type="text" value={acct} onChange={e => setAcct(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-slate-700" placeholder="請輸入帳號" />
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">密碼</label>
+            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">密碼</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input required type="password" value={pwd} onChange={e => setPwd(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-slate-700" placeholder="請輸入密碼" />
@@ -197,7 +197,7 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
 
         <button onClick={() => { setIsAdminPortal(!isAdminPortal); setErr(''); }} className="mt-8 flex items-center gap-2 text-xs font-black text-blue-600 bg-blue-50 px-8 py-3 rounded-full hover:bg-blue-100 transition-all mx-auto shadow-sm">
           {isAdminPortal ? <User size={14}/> : <Key size={14}/>}
-          {isAdminPortal ? '返回一般使用者介面' : '進入管理者通道'}
+          {isAdminPortal ? '返回一般登入入口' : '進入管理者通道'}
         </button>
       </div>
     </div>
@@ -218,7 +218,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
     return onSnapshot(usersRef, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setUsers(data);
-      // 自動同步 abc 帳號
+      // 同步 abc 帳號
       const hasAbc = data.some(u => u.username === 'abc');
       if (!hasAbc && !loading) {
         setDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db', 'abc'), {
@@ -239,14 +239,14 @@ const AdminDashboard = ({ authUser, onLogout }) => {
     setEditingUser(null); setNewAcct(''); setNewPwd('');
   };
 
-  if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-4" size={48} /><p className="font-bold text-slate-400">正在認證管理權限...</p></div>;
+  if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-4" size={48} /><p className="font-bold text-slate-400 italic">權限連線中...</p></div>;
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-12 animate-fade-in font-sans space-y-12">
       <header className="max-w-5xl mx-auto flex justify-between items-center bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><UserCog size={32} /></div>
-          <div><h2 className="text-2xl font-black tracking-tight">後台管理系統</h2><p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Admin: yljh</p></div>
+          <div><h2 className="text-2xl font-black tracking-tight">帳號管理系統</h2><p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Admin: yljh</p></div>
         </div>
         <button onClick={onLogout} className="p-4 bg-white/10 hover:bg-red-500 transition-all rounded-2xl font-black text-sm flex items-center gap-2"><LogOut size={20} /> 登出</button>
       </header>
@@ -254,16 +254,16 @@ const AdminDashboard = ({ authUser, onLogout }) => {
       <div className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-[4rem] shadow-xl border border-slate-100">
         <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600" /> {editingUser ? `更新帳號 ${editingUser.username} 的密碼` : '建立新使用者'}</h3>
         <form onSubmit={handleSave} className="flex flex-wrap md:flex-nowrap gap-4 items-end">
-          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">帳號</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>)}
-          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">密碼</label><input required placeholder="輸入新密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>
-          <div className="flex gap-2">{editingUser && <button type="button" onClick={() => {setEditingUser(null); setNewPwd('');}} className="px-6 py-4 rounded-2xl font-bold text-slate-400">取消</button>}<button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl active:scale-95">{editingUser ? '儲存' : '建立'}</button></div>
+          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">帳號</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>)}
+          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">密碼</label><input required placeholder="輸入新密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>
+          <div className="flex gap-2">{editingUser && <button type="button" onClick={() => {setEditingUser(null); setNewPwd('');}} className="px-6 py-4 rounded-2xl font-bold text-slate-400">取消</button>}<button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-blue-700 active:scale-95">{editingUser ? '儲存修改' : '建立帳號'}</button></div>
         </form>
       </div>
 
       <div className="max-w-5xl mx-auto bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
-            <tr><th className="px-8 py-5">使用者</th><th className="px-8 py-5">密碼</th><th className="px-8 py-5">建立時間</th><th className="px-8 py-5 text-center">操作</th></tr>
+            <tr><th className="px-8 py-5">使用者</th><th className="px-8 py-5">當前密碼</th><th className="px-8 py-5">建立日期</th><th className="px-8 py-5 text-center">操作選項</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map(u => (
@@ -274,7 +274,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
                 <td className="px-8 py-5 text-center">
                   <div className="flex justify-center gap-2">
                     <button onClick={() => { setEditingUser(u); setNewPwd(u.password); }} className="p-2 text-slate-300 hover:text-blue-600 transition-colors"><Edit3 size={18}/></button>
-                    <button onClick={async () => { if(confirm('刪除？')) await deleteDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db', u.id)); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+                    <button onClick={async () => { if(confirm('刪除帳號？')) await deleteDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db', u.id)); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
                   </div>
                 </td>
               </tr>
@@ -286,7 +286,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
   );
 };
 
-// --- 子組件：費用、天氣、匯率、清單 (由 0215a.txt 恢復) ---
+// --- 子組件：費用、天氣、匯率、清單 (由原稿 0215a.txt 完全恢復) ---
 const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   const expenses = Array.isArray(itineraryData?.expenses) ? itineraryData.expenses : [];
   const [item, setItem] = useState('');
@@ -314,7 +314,7 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   return (
     <div className="animate-fade-in space-y-8 pb-10 px-4">
       <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 text-center"><div className="flex justify-between items-center mb-4 gap-4"><div><h3 className="text-2xl font-black text-slate-800 tracking-tight">行李進度</h3><p className="text-sm font-bold text-slate-400">已完成 {checklist.filter(i => i.completed).length} / {checklist.length} 項</p></div><span className="text-6xl font-black text-blue-600 italic">{progress}%</span></div><div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progress}%` }}></div></div></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{CHECKLIST_CATEGORIES.map(cat => (<div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-50 flex flex-col hover:shadow-xl transition-all"><div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Plus size={20} /></button></div>{addingToCategory === cat.id && (<div className="mb-4 flex gap-2 animate-fade-in"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>)}<div className="space-y-3">{(grouped[cat.id] || []).map(item => (<div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>{editingItemId === item.id ? (<div className="flex items-center gap-2 flex-1"><input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" /></div>) : (<div className="flex items-center gap-3 flex-1"><div onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md' : 'border-slate-200 hover:border-blue-300'}`}>{item.completed && <Check size={12} />}</div><span onClick={() => { setEditingItemId(item.id); setEditItemText(item.text); }} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span><button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button></div>)}</div>))}</div></div>))}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{CHECKLIST_CATEGORIES.map(cat => (<div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-50 flex flex-col hover:shadow-xl transition-all"><div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Plus size={20} /></button></div>{addingToCategory === cat.id && (<div className="mb-4 flex gap-2 animate-fade-in"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>)}<div className="space-y-3">{(grouped[cat.id] || []).map(item => (<div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>{editingItemId === item.id ? (<div className="flex items-center gap-2 flex-1"><input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" /></div>) : (<div className="flex items-center gap-3 flex-1"><div onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md' : 'border-slate-200'}`}>{item.completed && <Check size={12} />}</div><span onClick={() => { setEditingItemId(item.id); setEditItemText(item.text); }} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span><button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button></div>)}</div>))}</div></div>))}</div>
     </div>
   );
 };
@@ -327,7 +327,7 @@ const WeatherMaster = ({ tripInfo }) => {
     try {
       const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(tripInfo.city)}&count=1&language=zh&format=json`);
       const geoData = await geoRes.json();
-      if (!geoData.results?.length) throw new Error('地點錯誤');
+      if (!geoData.results?.length) throw new Error('找不到地點');
       const { latitude, longitude, name } = geoData.results[0];
       const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&start_date=${tripInfo.startDate}&end_date=${tripInfo.startDate}`);
       const weatherData = await weatherRes.json();
@@ -337,7 +337,7 @@ const WeatherMaster = ({ tripInfo }) => {
   return (
     <div className="animate-fade-in space-y-10 pb-10 px-4">
       <div className="bg-white p-12 rounded-[4rem] shadow-xl border border-slate-100 text-center"><Sun className="text-orange-500 mx-auto mb-6" size={64} /><h3 className="text-3xl font-black text-slate-900 tracking-tight">{tripInfo?.city || '未設定地點'}</h3><p className="text-slate-400 font-bold mb-8 italic tracking-widest">{tripInfo.startDate} 行程預報</p><button onClick={fetchWeather} disabled={loading} className="bg-blue-600 text-white px-10 py-4 rounded-3xl font-black shadow-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto">{loading ? <Loader2 className="animate-spin" /> : '立即查詢行程預報'}</button></div>
-      {results && results.time.map((time, i) => { const advice = getWeatherAdvice(results.weather_code[i]); return (<div key={time} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg flex items-center justify-between"><div className="flex items-center gap-6"><advice.icon size={48} className={advice.color} /><div><p className={`font-black text-lg ${advice.color}`}>{advice.label}</p><p className="text-xs text-slate-400 font-bold">{advice.tips}</p></div></div><div className="text-right font-black"><p className="text-3xl text-slate-800">{Math.round(results.temperature_2m_max[i])}°</p><p className="text-xs text-slate-300">{Math.round(results.temperature_2m_min[i])}°</p></div></div>); })}
+      {results && results.time.map((time, i) => { const advice = getWeatherAdvice(results.weather_code[i]); return (<div key={time} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg flex items-center justify-between group"><div className="flex items-center gap-6"><advice.icon size={48} className={advice.color} /><div><p className={`font-black text-lg ${advice.color}`}>{advice.label}</p><p className="text-xs text-slate-400 font-bold">{advice.tips}</p></div></div><div className="text-right font-black"><p className="text-3xl text-slate-800">{Math.round(results.temperature_2m_max[i])}°</p><p className="text-xs text-slate-300">{Math.round(results.temperature_2m_min[i])}°</p></div></div>); })}
     </div>
   );
 };
@@ -354,7 +354,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   return (
     <div className="animate-fade-in space-y-8 pb-10 px-4">
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 p-8 md:p-14"><div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center"><div className="md:col-span-3 space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">輸入金額</label><div className="relative"><DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} /><input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none text-2xl font-black shadow-inner" /><div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div></div></div><div className="md:col-span-1 flex justify-center"><ArrowLeftRight className="text-blue-600 md:rotate-0 rotate-90" size={28} /></div><div className="md:col-span-3 space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">換算結果</label><div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl"><div><span className="text-3xl font-black">{(amount * finalRate).toFixed(2)}</span><p className="text-blue-100 text-[10px] font-bold">{currencyNames[targetCurrency]}</p></div><select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div></div></div></div>
-      <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800"><div className="flex items-center gap-3 mb-8"><Calculator size={24} className="text-blue-500" /><h4 className="font-black text-2xl tracking-tight">計算機</h4></div><div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right text-5xl font-black font-mono shadow-inner">{calcDisplay}</div><div className="grid grid-cols-4 gap-4 md:gap-6">{['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10'}`}>{btn}</button>))}<button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all shadow-lg"><Equal size={32}/></button><button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all active:scale-95 shadow-xl">套用金額</button></div></div>
+      <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800"><div className="flex items-center gap-3 mb-8"><Calculator size={24} className="text-blue-500" /><h4 className="font-black text-2xl tracking-tight">小計算機</h4></div><div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right text-5xl font-black font-mono shadow-inner">{calcDisplay}</div><div className="grid grid-cols-4 gap-4 md:gap-6">{['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10'}`}>{btn}</button>))}<button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all shadow-lg"><Equal size={32}/></button><button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all active:scale-95 shadow-xl">套用金額</button></div></div>
     </div>
   );
 };
@@ -401,7 +401,7 @@ const MainItinerarySection = (props) => (
               <div onClick={() => !isEditing && props.setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${isEditing ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
                 {isEditing ? ( 
                   <div className="space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
-                    <div className="flex gap-2"><input type="time" value={props.editData.time} onChange={e => props.setEditData({...props.editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none shadow-inner" /><input value={props.editData.spot} onChange={e => props.setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none shadow-inner" /></div>
+                    <div className="flex gap-2"><input type="time" value={editData.time} onChange={e => props.setEditData({...props.editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none shadow-inner" /><input value={editData.spot} onChange={e => props.setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none shadow-inner" /></div>
                     <input placeholder="修改圖片網址..." value={props.editData.imageUrl || ''} onChange={e => props.setEditData({...props.editData, imageUrl: e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 outline-none text-xs font-bold shadow-inner" />
                     <textarea value={props.editData.note} onChange={e => props.setEditData({...props.editData, note: e.target.value})} className="w-full p-3 border rounded-xl h-24 bg-slate-50 outline-none text-sm shadow-inner" />
                     <div className="flex justify-end gap-3"><button onClick={(e) => { e.stopPropagation(); props.setEditingId(null); }} className="text-sm font-bold text-slate-400 px-4">取消</button><button onClick={async (e) => { e.stopPropagation(); const spots = props.itineraryData.days[props.activeDay].spots.map(s => s.id === props.editingId ? props.editData : s); await props.updateItinField(`days.${props.activeDay}.spots`, spots); props.setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg shadow-blue-100">儲存變更</button></div>
