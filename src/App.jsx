@@ -30,17 +30,17 @@ import {
 /**
  * 🏆 Travel Planner - 彥麟製作最終黃金基準旗艦版 (2026.02.15)
  * ------------------------------------------------
- * V6.5 完美遵循原稿與功能加固版：
- * 1. 完全遵循原稿：以 0215a.txt 為基準，保留所有介面細節與邏輯。
- * 2. 徹底解決權限與旋轉：優化 LoginView 載入機制，確保先 Auth 後讀取。
- * 3. 管理者入口：提供清晰的「管理員通道」切換，支援 yljh 後台管理。
- * 4. 解決渲染衝突：加固 renderTextWithLinks 函式型別檢查。
- * 5. 資料恢復：鎖定 fAppId 為 'travel-yeh'。
+ * V6.6 完美遵循原稿與架構加固版：
+ * 1. 忠於原稿：完全採用 0215a.txt 的 UI 組件與資料結構。
+ * 2. 徹底解決權限問題：嚴格執行 Rule 3 (Auth -> Fetch)。
+ * 3. 解決分頁空白：修正組件對接名稱，確保天氣/費用/清單正常顯示。
+ * 4. 帳號同步：管理員進入後台會自動補足 abc 帳號至資料庫。
+ * 5. 樣式修復：優化 CSS 注入機制。
  */
 
-const VERSION_INFO = "旗艦穩定版 V6.5 - 2026/02/15 23:55";
+const VERSION_INFO = "旗艦穩定版 V6.6 - 2026/02/15 22:30";
 
-// --- 靜態資料配置 ---
+// --- 靜態配置資料 ---
 const currencyNames = {
   "TWD": "台灣 - 台幣", "USD": "美國 - 美金", "JPY": "日本 - 日圓", "KRW": "韓國 - 韓元",
   "THB": "泰國 - 泰銖", "VND": "越南 - 越南盾", "HKD": "香港 - 港幣", "EUR": "歐盟 - 歐元",
@@ -84,7 +84,6 @@ const getFormattedDate = (baseDate, dayOffset) => {
   if (!baseDate) return "";
   try {
     const d = new Date(baseDate);
-    if (isNaN(d.getTime())) return "";
     d.setDate(d.getDate() + (dayOffset - 1));
     return d.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch (e) { return ""; }
@@ -94,7 +93,6 @@ const getDayOfWeek = (baseDate, dayOffset) => {
   if (!baseDate) return "";
   try {
     const d = new Date(baseDate);
-    if (isNaN(d.getTime())) return "";
     d.setDate(d.getDate() + (dayOffset - 1));
     return d.toLocaleDateString('zh-TW', { weekday: 'long' });
   } catch (e) { return ""; }
@@ -120,12 +118,11 @@ const getWeatherAdvice = (code) => {
   if (code === 0) return { label: "晴天", tips: "紫外線強，建議防曬並補充水分。", icon: Sun, color: "text-orange-500" };
   if (code >= 1 && code <= 3) return { label: "多雲", tips: "天氣舒適，適合戶外活動。", icon: Cloud, color: "text-blue-400" };
   if (code >= 51 && code <= 67) return { label: "有雨", tips: "請隨身攜帶雨具防止淋雨。", icon: CloudRain, color: "text-blue-600" };
-  if (code >= 71 && code <= 77) return { label: "下雪", tips: "氣溫極低，請做好充足保暖。", icon: Snowflake, color: "text-cyan-300" };
   if (code >= 95) return { label: "雷雨", tips: "天氣惡劣，建議調整至室內行程。", icon: CloudLightning, color: "text-purple-600" };
   return { label: "多雲時晴", tips: "查看預報調整您的行程規劃。", icon: Cloud, color: "text-blue-400" };
 };
 
-// --- 子組件：登入視窗 ---
+// --- 子組件：登入介面 ---
 const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
   const [acct, setAcct] = useState('');
   const [pwd, setPwd] = useState('');
@@ -136,8 +133,8 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
 
   useEffect(() => {
     let active = true;
-    const fetchAccounts = async () => {
-      if (!authUser) return; // 守衛：確保頂層 Auth 已建立
+    const loadAccounts = async () => {
+      if (!authUser) return; // 守衛：Auth 就緒才發請求
       try {
         const snap = await getDocs(collection(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db'));
         if (active) {
@@ -145,13 +142,13 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
           setStatus('ready');
         }
       } catch (e) {
-        console.warn("Permission restricted, offline mode activated.");
+        console.warn("帳號庫請求受限，靜態帳號啟用。");
         if (active) setStatus('ready');
       }
     };
-    fetchAccounts();
-    const timeout = setTimeout(() => { if(active) setStatus('ready'); }, 4000);
-    return () => { active = false; clearTimeout(timeout); };
+    loadAccounts();
+    const timer = setTimeout(() => { if (active) setStatus('ready'); }, 4000);
+    return () => { active = false; clearTimeout(timer); };
   }, [authUser]);
 
   const handleSubmit = (e) => {
@@ -172,21 +169,21 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
     <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-6 font-sans">
       <div className="max-w-md w-full animate-fade-in text-center">
         <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl rotate-12 shadow-blue-200">
-          {isAdminPortal ? <UserCog size={40} /> : <Plane size={40} />}
+          {isAdminPortal ? <ShieldCheck size={40} /> : <Plane size={40} />}
         </div>
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{isAdminPortal ? '管理者專用入口' : '歡迎回來'}</h2>
-        <p className="text-slate-400 font-bold mt-2 mb-8">{isAdminPortal ? '系統管理與帳號授權' : '請登入以存取您的雲端旅程'}</p>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{isAdminPortal ? '管理員控制台' : '歡迎回來'}</h2>
+        <p className="text-slate-400 font-bold mt-2 mb-8">{isAdminPortal ? '後台系統管理權限' : '請登入以存取您的雲端旅程'}</p>
 
         <form onSubmit={handleSubmit} className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 space-y-6 text-left">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">帳號</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">帳號</label>
             <div className="relative">
               <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input required type="text" value={acct} onChange={e => setAcct(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-slate-700" placeholder="請輸入帳號" />
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest ml-1">密碼</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">密碼</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
               <input required type="password" value={pwd} onChange={e => setPwd(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-bold text-slate-700" placeholder="請輸入密碼" />
@@ -194,13 +191,13 @@ const LoginView = ({ authUser, onLoginSuccess, onAdminSuccess }) => {
           </div>
           {err && <div className="flex items-center gap-2 text-red-500 text-xs font-bold bg-red-50 p-3 rounded-xl animate-pulse"><AlertCircle size={14} /> {err}</div>}
           <button type="submit" disabled={status === 'loading'} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl active:scale-95 disabled:opacity-50">
-            {status === 'loading' ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> 立即進入系統</>}
+            {status === 'loading' ? <Loader2 className="animate-spin" /> : <><LogIn size={20} /> 立即登入</>}
           </button>
         </form>
 
         <button onClick={() => { setIsAdminPortal(!isAdminPortal); setErr(''); }} className="mt-8 flex items-center gap-2 text-xs font-black text-blue-600 bg-blue-50 px-8 py-3 rounded-full hover:bg-blue-100 transition-all mx-auto shadow-sm">
           {isAdminPortal ? <User size={14}/> : <Key size={14}/>}
-          {isAdminPortal ? '返回一般登入入口' : '進入管理者通道'}
+          {isAdminPortal ? '返回一般使用者介面' : '進入管理者通道'}
         </button>
       </div>
     </div>
@@ -221,7 +218,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
     return onSnapshot(usersRef, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setUsers(data);
-      // 同步 abc 帳號
+      // 自動同步 abc 帳號
       const hasAbc = data.some(u => u.username === 'abc');
       if (!hasAbc && !loading) {
         setDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'users_db', 'abc'), {
@@ -229,7 +226,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
         });
       }
       setLoading(false);
-    }, (err) => { console.error("Admin permission error", err); setLoading(false); });
+    }, (err) => { console.error("Admin Load Error", err); setLoading(false); });
   }, [authUser]);
 
   const handleSave = async (e) => {
@@ -242,37 +239,38 @@ const AdminDashboard = ({ authUser, onLogout }) => {
     setEditingUser(null); setNewAcct(''); setNewPwd('');
   };
 
-  if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-4" size={48} /><p className="font-bold text-slate-400 italic">權限連線中...</p></div>;
+  if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50"><Loader2 className="animate-spin text-blue-600 mb-4" size={48} /><p className="font-bold text-slate-400">正在認證管理權限...</p></div>;
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 p-6 md:p-12 animate-fade-in font-sans space-y-12 text-slate-700">
+    <div className="w-full min-h-screen bg-slate-50 p-6 md:p-12 animate-fade-in font-sans space-y-12">
       <header className="max-w-5xl mx-auto flex justify-between items-center bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-blue-600 rounded-2xl shadow-lg"><UserCog size={32} /></div>
-          <div><h2 className="text-2xl font-black tracking-tight">帳號管理後台</h2><p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Admin: yljh</p></div>
+          <div><h2 className="text-2xl font-black tracking-tight">後台管理系統</h2><p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Admin: yljh</p></div>
         </div>
-        <button onClick={onLogout} className="p-4 bg-white/10 hover:bg-red-500 transition-all rounded-2xl flex items-center gap-2 font-black text-sm"><LogOut size={20} /> 登出</button>
+        <button onClick={onLogout} className="p-4 bg-white/10 hover:bg-red-500 transition-all rounded-2xl font-black text-sm flex items-center gap-2"><LogOut size={20} /> 登出</button>
       </header>
 
       <div className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-[4rem] shadow-xl border border-slate-100">
-        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600" /> {editingUser ? `更新使用者密碼: ${editingUser.username}` : '建立新使用者帳號'}</h3>
+        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600" /> {editingUser ? `更新帳號 ${editingUser.username} 的密碼` : '建立新使用者'}</h3>
         <form onSubmit={handleSave} className="flex flex-wrap md:flex-nowrap gap-4 items-end">
-          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1">帳號</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>)}
-          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-300 uppercase ml-1">密碼</label><input required placeholder="輸入密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>
-          <div className="flex gap-2">{editingUser && <button type="button" onClick={() => {setEditingUser(null); setNewPwd('');}} className="px-6 py-4 rounded-2xl font-bold text-slate-400">取消</button>}<button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-blue-700 active:scale-95">{editingUser ? '儲存修改' : '建立帳號'}</button></div>
+          {!editingUser && (<div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">帳號</label><input required placeholder=" traveler_01" value={newAcct} onChange={e => setNewAcct(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>)}
+          <div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">密碼</label><input required placeholder="輸入新密碼" value={newPwd} onChange={e => setNewPwd(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div>
+          <div className="flex gap-2">{editingUser && <button type="button" onClick={() => {setEditingUser(null); setNewPwd('');}} className="px-6 py-4 rounded-2xl font-bold text-slate-400">取消</button>}<button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl active:scale-95">{editingUser ? '儲存' : '建立'}</button></div>
         </form>
       </div>
 
       <div className="max-w-5xl mx-auto bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
-            <tr><th className="px-8 py-5">使用者</th><th className="px-8 py-5">登入密碼</th><th className="px-8 py-5 text-center">操作</th></tr>
+            <tr><th className="px-8 py-5">使用者</th><th className="px-8 py-5">密碼</th><th className="px-8 py-5">建立時間</th><th className="px-8 py-5 text-center">操作</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map(u => (
               <tr key={u.id} className="hover:bg-slate-50 transition-colors group">
                 <td className="px-8 py-5 font-black text-slate-700">{u.username}</td>
                 <td className="px-8 py-5 font-mono text-blue-600 font-bold">{u.password}</td>
+                <td className="px-8 py-5 text-slate-400 text-xs font-bold">{new Date(u.createdAt).toLocaleDateString()}</td>
                 <td className="px-8 py-5 text-center">
                   <div className="flex justify-center gap-2">
                     <button onClick={() => { setEditingUser(u); setNewPwd(u.password); }} className="p-2 text-slate-300 hover:text-blue-600 transition-colors"><Edit3 size={18}/></button>
@@ -288,7 +286,7 @@ const AdminDashboard = ({ authUser, onLogout }) => {
   );
 };
 
-// --- 功能子組件 (Expense, Weather, Currency, Checklist, Itinerary) ---
+// --- 子組件：費用、天氣、匯率、清單 (由 0215a.txt 恢復) ---
 const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   const expenses = Array.isArray(itineraryData?.expenses) ? itineraryData.expenses : [];
   const [item, setItem] = useState('');
@@ -297,9 +295,9 @@ const ExpenseMaster = ({ itineraryData, updateItinField }) => {
   const handleAdd = async (e) => { e.preventDefault(); if(!item || !amount) return; await updateItinField('expenses', [...expenses, { id: Date.now().toString(), item, amount, category: 'food', date: new Date().toISOString() }]); setItem(''); setAmount(''); };
   return (
     <div className="animate-fade-in space-y-8 pb-10 px-4">
-      <div className="bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 text-center md:text-left"><h3 className="text-slate-400 font-black text-xs uppercase mb-2">旅程總花費</h3><div className="flex items-baseline gap-2 justify-center"><span className="text-6xl font-black text-slate-900 tracking-tighter">${totalAmount.toLocaleString()}</span><span className="text-slate-300 font-bold uppercase tracking-widest text-xs">twd</span></div></div>
-      <div className="bg-white p-8 rounded-[4rem] shadow-lg border border-slate-100"><form onSubmit={handleAdd} className="flex flex-wrap md:flex-nowrap gap-4 items-end"><div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">支出項目</label><input required placeholder="內容" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><div className="w-full md:w-48 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">金額</label><input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center shrink-0"><Plus size={28}/></button></form></div>
-      <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden"><table className="w-full text-left"><tbody className="divide-y divide-slate-50">{expenses.length > 0 ? [...expenses].reverse().map(exp => (<tr key={exp.id} className="hover:bg-slate-50 group transition-colors"><td className="px-8 py-5 font-black text-slate-700">{exp.item}</td><td className="px-8 py-5 text-right font-mono font-black text-slate-800">${parseFloat(exp.amount).toLocaleString()}</td><td className="px-8 py-5 text-center"><button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button></td></tr>)) : (<tr><td colSpan="3" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">目前尚無記帳紀錄</td></tr>)}</tbody></table></div>
+      <div className="bg-white p-10 rounded-[3.5rem] shadow-xl border border-slate-100 text-center md:text-left"><h3 className="text-slate-400 font-black text-xs uppercase mb-2 ml-1">旅程總花費</h3><div className="flex items-baseline gap-2 justify-center"><span className="text-6xl font-black text-slate-900 tracking-tighter">${totalAmount.toLocaleString()}</span><span className="text-slate-300 font-bold uppercase text-xs">twd</span></div></div>
+      <div className="bg-white p-8 rounded-[4rem] shadow-lg border border-slate-100"><form onSubmit={handleAdd} className="flex flex-wrap md:flex-nowrap gap-4 items-end"><div className="flex-1 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">項目</label><input required placeholder="內容" value={item} onChange={e => setItem(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><div className="w-full md:w-48 space-y-1"><label className="text-[10px] font-black text-slate-400 uppercase ml-1">金額</label><input required type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-2xl font-bold outline-none shadow-inner" /></div><button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center shrink-0"><Plus size={28}/></button></form></div>
+      <div className="bg-white rounded-[3rem] shadow-xl border border-slate-50 overflow-hidden"><table className="w-full text-left"><tbody className="divide-y divide-slate-50">{expenses.length > 0 ? [...expenses].reverse().map(exp => (<tr key={exp.id} className="hover:bg-slate-50 group transition-colors"><td className="px-8 py-5 font-black text-slate-700">{exp.item}</td><td className="px-8 py-5 text-right font-mono font-black text-slate-800">${parseFloat(exp.amount).toLocaleString()}</td><td className="px-8 py-5 text-center"><button onClick={async () => await updateItinField('expenses', expenses.filter(e => e.id !== exp.id))} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button></td></tr>)) : (<tr><td colSpan="3" className="px-8 py-20 text-center text-slate-300 font-bold italic tracking-widest">尚未建立記錄</td></tr>)}</tbody></table></div>
     </div>
   );
 };
@@ -315,8 +313,8 @@ const ChecklistMaster = ({ itineraryData, updateItinField }) => {
   const progress = checklist.length > 0 ? Math.round((checklist.filter(i => i.completed).length / checklist.length) * 100) : 0;
   return (
     <div className="animate-fade-in space-y-8 pb-10 px-4">
-      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 text-center"><div className="flex justify-between items-center mb-4 gap-4"><div><h3 className="text-2xl font-black text-slate-800 tracking-tight">行李進度系統</h3><p className="text-sm font-bold text-slate-400">已完成 {checklist.filter(i => i.completed).length} / {checklist.length} 項</p></div><span className="text-6xl font-black text-blue-600 italic">{progress}%</span></div><div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progress}%` }}></div></div></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{CHECKLIST_CATEGORIES.map(cat => (<div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-50 flex flex-col hover:shadow-xl transition-all"><div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Plus size={20} /></button></div>{addingToCategory === cat.id && (<div className="mb-4 flex gap-2 animate-fade-in"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>)}<div className="space-y-3">{(grouped[cat.id] || []).map(item => (<div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>{editingItemId === item.id ? (<div className="flex items-center gap-2 flex-1"><input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" /><button onClick={() => handleSaveEdit(item.id)} className="text-blue-600 hover:bg-blue-50 p-1 rounded-lg transition-colors"><Check size={16}/></button></div>) : (<div className="flex items-center gap-3 flex-1"><div onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md' : 'border-slate-200 hover:border-blue-300'}`}>{item.completed && <Check size={14} />}</div><span onClick={() => { setEditingItemId(item.id); setEditItemText(item.text); }} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span><button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button></div>)}</div>))}</div></div>))}</div>
+      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 text-center"><div className="flex justify-between items-center mb-4 gap-4"><div><h3 className="text-2xl font-black text-slate-800 tracking-tight">行李進度</h3><p className="text-sm font-bold text-slate-400">已完成 {checklist.filter(i => i.completed).length} / {checklist.length} 項</p></div><span className="text-6xl font-black text-blue-600 italic">{progress}%</span></div><div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner"><div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${progress}%` }}></div></div></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">{CHECKLIST_CATEGORIES.map(cat => (<div key={cat.id} className="bg-white p-8 rounded-[3rem] shadow-lg border border-slate-50 flex flex-col hover:shadow-xl transition-all"><div className="flex items-center justify-between mb-6"><div className="flex items-center gap-3"><div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><cat.icon size={24} /></div><h4 className="text-xl font-black text-slate-800">{cat.name}</h4></div><button onClick={() => setAddingToCategory(cat.id === addingToCategory ? null : cat.id)} className="p-2 text-slate-300 hover:text-blue-500 transition-colors"><Plus size={20} /></button></div>{addingToCategory === cat.id && (<div className="mb-4 flex gap-2 animate-fade-in"><input autoFocus placeholder="新增項目..." value={newItemText} onChange={e => setNewItemText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); })()} className="flex-1 p-3 bg-slate-50 border-2 border-blue-100 rounded-xl text-sm font-bold outline-none" /><button onClick={async () => { const newItem = { id: Date.now().toString(), text: newItemText.trim(), completed: false, categoryId: cat.id }; await updateItinField('checklist', [...checklist, newItem]); setNewItemText(''); setAddingToCategory(null); }} className="bg-blue-600 text-white px-4 rounded-xl font-black shadow-md"><CheckCircle2 size={18}/></button></div>)}<div className="space-y-3">{(grouped[cat.id] || []).map(item => (<div key={item.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all group ${item.completed ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-blue-100 shadow-sm'}`}>{editingItemId === item.id ? (<div className="flex items-center gap-2 flex-1"><input autoFocus value={editItemText} onChange={(e) => setEditItemText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(item.id)} className="flex-1 p-1 bg-slate-50 border-b-2 border-blue-500 outline-none text-sm font-bold" /></div>) : (<div className="flex items-center gap-3 flex-1"><div onClick={async () => await updateItinField('checklist', checklist.map(i => i.id === item.id ? { ...i, completed: !i.completed } : i))} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${item.completed ? 'bg-green-500 border-green-500 text-white shadow-md' : 'border-slate-200 hover:border-blue-300'}`}>{item.completed && <Check size={12} />}</div><span onClick={() => { setEditingItemId(item.id); setEditItemText(item.text); }} className={`text-sm font-bold flex-1 cursor-pointer ${item.completed ? 'line-through text-slate-400 italic' : 'text-slate-700'}`}>{item.text}</span><button onClick={async () => await updateItinField('checklist', checklist.filter(i => i.id !== item.id))} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button></div>)}</div>))}</div></div>))}</div>
     </div>
   );
 };
@@ -339,7 +337,7 @@ const WeatherMaster = ({ tripInfo }) => {
   return (
     <div className="animate-fade-in space-y-10 pb-10 px-4">
       <div className="bg-white p-12 rounded-[4rem] shadow-xl border border-slate-100 text-center"><Sun className="text-orange-500 mx-auto mb-6" size={64} /><h3 className="text-3xl font-black text-slate-900 tracking-tight">{tripInfo?.city || '未設定地點'}</h3><p className="text-slate-400 font-bold mb-8 italic tracking-widest">{tripInfo.startDate} 行程預報</p><button onClick={fetchWeather} disabled={loading} className="bg-blue-600 text-white px-10 py-4 rounded-3xl font-black shadow-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto">{loading ? <Loader2 className="animate-spin" /> : '立即查詢行程預報'}</button></div>
-      {results && results.time.map((time, i) => { const advice = getWeatherAdvice(results.weather_code[i]); return (<div key={time} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg flex items-center justify-between group"><div className="flex items-center gap-6"><advice.icon size={48} className={advice.color} /><div><p className={`font-black text-lg ${advice.color}`}>{advice.label}</p><p className="text-xs text-slate-400 font-bold">{advice.tips}</p></div></div><div className="text-right font-black"><p className="text-3xl text-slate-800">{Math.round(results.temperature_2m_max[i])}°</p><p className="text-xs text-slate-300">{Math.round(results.temperature_2m_min[i])}°</p></div></div>); })}
+      {results && results.time.map((time, i) => { const advice = getWeatherAdvice(results.weather_code[i]); return (<div key={time} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-lg flex items-center justify-between"><div className="flex items-center gap-6"><advice.icon size={48} className={advice.color} /><div><p className={`font-black text-lg ${advice.color}`}>{advice.label}</p><p className="text-xs text-slate-400 font-bold">{advice.tips}</p></div></div><div className="text-right font-black"><p className="text-3xl text-slate-800">{Math.round(results.temperature_2m_max[i])}°</p><p className="text-xs text-slate-300">{Math.round(results.temperature_2m_min[i])}°</p></div></div>); })}
     </div>
   );
 };
@@ -356,7 +354,7 @@ const CurrencyMaster = ({ itineraryData, updateItinField }) => {
   return (
     <div className="animate-fade-in space-y-8 pb-10 px-4">
       <div className="bg-white rounded-[3.5rem] shadow-2xl border border-slate-100 p-8 md:p-14"><div className="grid grid-cols-1 md:grid-cols-7 gap-8 items-center"><div className="md:col-span-3 space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">輸入金額</label><div className="relative"><DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={24} /><input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full pl-14 pr-4 py-6 bg-slate-50 border-2 border-transparent focus:border-blue-500 rounded-3xl outline-none text-2xl font-black shadow-inner" /><div className="absolute right-4 top-1/2 -translate-y-1/2"><select value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} className="bg-white border shadow-sm rounded-xl px-2 py-1 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div></div></div><div className="md:col-span-1 flex justify-center"><ArrowLeftRight className="text-blue-600 md:rotate-0 rotate-90" size={28} /></div><div className="md:col-span-3 space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">換算結果</label><div className="w-full pl-8 pr-6 py-5 bg-blue-600 rounded-[2rem] text-white flex items-center justify-between shadow-xl"><div><span className="text-3xl font-black">{(amount * finalRate).toFixed(2)}</span><p className="text-blue-100 text-[10px] font-bold">{currencyNames[targetCurrency]}</p></div><select value={targetCurrency} onChange={e => setTargetCurrency(e.target.value)} className="bg-blue-700 text-white border-none rounded-xl px-3 py-1.5 text-xs font-black">{Object.keys(currencyNames).map(c => <option key={c} value={c}>{currencyNames[c]}</option>)}</select></div></div></div></div>
-      <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800"><div className="flex items-center gap-3 mb-8"><Calculator size={24} className="text-blue-500" /><h4 className="font-black text-2xl tracking-tight">小計算機</h4></div><div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right text-5xl font-black font-mono shadow-inner">{calcDisplay}</div><div className="grid grid-cols-4 gap-4 md:gap-6">{['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10'}`}>{btn}</button>))}<button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all shadow-lg"><Equal size={32}/></button><button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all active:scale-95 shadow-xl">套用金額</button></div></div>
+      <div className="bg-slate-900 text-white p-8 md:p-12 rounded-[4rem] shadow-2xl border border-slate-800"><div className="flex items-center gap-3 mb-8"><Calculator size={24} className="text-blue-500" /><h4 className="font-black text-2xl tracking-tight">計算機</h4></div><div className="bg-black/40 p-8 rounded-[2.5rem] mb-10 text-right text-5xl font-black font-mono shadow-inner">{calcDisplay}</div><div className="grid grid-cols-4 gap-4 md:gap-6">{['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'].map(btn => (<button key={btn} onClick={() => handleCalcInput(btn)} className={`py-6 md:py-8 rounded-[1.5rem] font-black text-3xl transition-all shadow-sm active:scale-95 ${isNaN(btn) && btn !== '.' ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-white/5 hover:bg-white/10'}`}>{btn}</button>))}<button onClick={() => handleCalcInput('=')} className="col-span-2 py-8 bg-green-600 text-white rounded-[1.5rem] font-black text-2xl hover:bg-green-500 transition-all shadow-lg"><Equal size={32}/></button><button onClick={() => setAmount(parseFloat(calcDisplay) || 0)} className="col-span-2 py-8 bg-white text-slate-900 rounded-[1.5rem] font-black text-xl hover:bg-slate-100 transition-all active:scale-95 shadow-xl">套用金額</button></div></div>
     </div>
   );
 };
@@ -371,7 +369,7 @@ const MainItinerarySection = (props) => (
         </button>
       ))}
     </div>
-    <div className="space-y-6 px-4">
+    <div className="space-y-6 px-4 text-slate-700">
       <div className="flex flex-col md:flex-row md:items-end gap-4">
         <div className="flex items-center gap-4">
           <h2 className="text-6xl font-black text-slate-900 tracking-tighter italic leading-none shrink-0">Day {props.activeDay}</h2>
@@ -390,27 +388,28 @@ const MainItinerarySection = (props) => (
     </div>
     <div className="bg-white p-6 md:p-12 rounded-[4rem] shadow-sm border border-slate-100">
       <form onSubmit={async e => { e.preventDefault(); const current = props.itineraryData?.days?.[props.activeDay]?.spots || []; await props.updateItinField(`days.${props.activeDay}.spots`, [...current, { ...props.newSpot, id: Date.now().toString() }]); props.setNewSpot({ time: '09:00', spot: '', note: '', imageUrl: '' }); }} className="mb-12 space-y-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 shadow-inner">
-        <div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm shadow-inner"><Clock size={18} className="text-blue-500" /><input type="time" value={props.newSpot.time} onChange={e => props.setNewSpot({...props.newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 text-slate-700" /></div><input placeholder="想在那裡留下足跡？" required value={props.newSpot.spot} onChange={e => props.setNewSpot({...props.newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm shadow-inner" /></div>
-        <div className="flex gap-3"><div className="w-1/3 flex items-center gap-2 bg-white px-4 py-2 rounded-xl border shadow-sm text-xs font-bold text-slate-400"><ImageIcon size={18} /><input placeholder="圖片網址" value={props.newSpot.imageUrl} onChange={e => props.setNewSpot({...props.newSpot, imageUrl: e.target.value})} className="bg-transparent outline-none w-full" /></div><textarea placeholder="細節備註 (支援超連結)..." value={props.newSpot.note} onChange={e => props.setNewSpot({...props.newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm shadow-sm shadow-inner" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black active:scale-95 shadow-lg flex items-center justify-center shadow-slate-200 shadow-md"><Plus size={24}/></button></div>
+        <div className="flex gap-3 flex-wrap md:flex-nowrap"><div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border w-full md:w-auto shadow-sm shadow-inner"><Clock size={18} className="text-blue-500" /><input type="time" value={props.newSpot.time} onChange={e => props.setNewSpot({...props.newSpot, time: e.target.value})} className="bg-transparent font-black outline-none w-24 text-slate-700" /></div><input placeholder="想在那裡留下足跡？" required value={props.newSpot.spot} onChange={e => props.setNewSpot({...props.newSpot, spot: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-bold outline-none shadow-sm shadow-inner text-slate-700" /></div>
+        <div className="flex gap-3"><div className="w-1/3 flex items-center gap-2 bg-white px-4 py-2 rounded-xl border shadow-sm text-xs font-bold text-slate-400"><ImageIcon size={18} /><input placeholder="圖片網址" value={props.newSpot.imageUrl} onChange={e => props.setNewSpot({...props.newSpot, imageUrl: e.target.value})} className="bg-transparent outline-none w-full" /></div><textarea placeholder="細節備註 (支援超連結)..." value={props.newSpot.note} onChange={e => props.setNewSpot({...props.newSpot, note: e.target.value})} className="flex-1 p-3 bg-white border rounded-xl font-medium h-20 resize-none text-sm shadow-sm" /><button type="submit" className="bg-slate-900 text-white px-8 rounded-xl font-black active:scale-95 shadow-lg flex items-center justify-center shadow-slate-200 shadow-md"><Plus size={24}/></button></div>
       </form>
       <div className="space-y-8 relative before:content-[''] before:absolute before:left-[35px] before:top-4 before:bottom-4 before:w-1.5 before:bg-slate-50 before:rounded-full px-2">
         {(props.itineraryData?.days?.[props.activeDay]?.spots || []).map((item, idx) => {
           const isExpanded = props.showAllNotes || !!props.expandedItems[item.id];
           const isEditing = props.editingId === item.id;
           return (
-            <div key={item.id} className="relative pl-2 group">
+            <div key={item.id} className="relative pl-20 group">
               <div className="absolute left-[-15px] top-1/2 -translate-y-1/2 flex flex-col items-center gap-1"><button onClick={(e) => { e.stopPropagation(); const spots = [...props.itineraryData.days[props.activeDay].spots]; if (idx > 0) { [spots[idx], spots[idx-1]] = [spots[idx-1], spots[idx]]; props.updateItinField(`days.${props.activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowUp size={20}/></button><div className="w-16 h-16 bg-white border-8 border-slate-50 rounded-[1.5rem] flex items-center justify-center text-[11px] font-black text-blue-600 shadow-md transition-transform group-hover:scale-110">{item.time}</div><button onClick={(e) => { e.stopPropagation(); const spots = [...props.itineraryData.days[props.activeDay].spots]; if (idx < (props.itineraryData.days[props.activeDay].spots?.length - 1)) { [spots[idx], spots[idx+1]] = [spots[idx+1], spots[idx]]; props.updateItinField(`days.${props.activeDay}.spots`, spots); } }} className="text-slate-200 hover:text-blue-600 transition-colors"><ArrowDown size={20}/></button></div>
               <div onClick={() => !isEditing && props.setExpandedItems(prev => ({...prev, [item.id]: !prev[item.id]}))} className={`p-10 bg-white border rounded-[3rem] transition-all cursor-pointer ${isEditing ? 'border-blue-600 shadow-2xl ring-8 ring-blue-50' : 'border-slate-100 hover:shadow-2xl shadow-sm'}`}>
                 {isEditing ? ( 
                   <div className="space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>
-                    <div className="flex gap-2"><input type="time" value={props.editData.time} onChange={e => props.setEditData({...props.editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none shadow-inner" /><input value={props.editData.spot} onChange={e => props.setEditData({...props.editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none shadow-inner" /></div>
+                    <div className="flex gap-2"><input type="time" value={props.editData.time} onChange={e => props.setEditData({...props.editData, time: e.target.value})} className="p-3 border rounded-xl font-black w-32 bg-slate-50 outline-none shadow-inner" /><input value={props.editData.spot} onChange={e => props.setEditData({...editData, spot: e.target.value})} className="flex-1 p-3 border rounded-xl font-black bg-slate-50 outline-none shadow-inner" /></div>
                     <input placeholder="修改圖片網址..." value={props.editData.imageUrl || ''} onChange={e => props.setEditData({...props.editData, imageUrl: e.target.value})} className="w-full p-3 border rounded-xl bg-slate-50 outline-none text-xs font-bold shadow-inner" />
                     <textarea value={props.editData.note} onChange={e => props.setEditData({...props.editData, note: e.target.value})} className="w-full p-3 border rounded-xl h-24 bg-slate-50 outline-none text-sm shadow-inner" />
                     <div className="flex justify-end gap-3"><button onClick={(e) => { e.stopPropagation(); props.setEditingId(null); }} className="text-sm font-bold text-slate-400 px-4">取消</button><button onClick={async (e) => { e.stopPropagation(); const spots = props.itineraryData.days[props.activeDay].spots.map(s => s.id === props.editingId ? props.editData : s); await props.updateItinField(`days.${props.activeDay}.spots`, spots); props.setEditingId(null); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-black shadow-lg shadow-blue-100">儲存變更</button></div>
                   </div>
                 ) : ( <div className="flex justify-between items-start gap-4">
                     <div className="space-y-4 flex-1">
-                      <div className="flex items-center gap-4 flex-wrap"><h4 className="text-3xl font-black text-slate-800 leading-tight tracking-tight">{item.spot}</h4><div className="flex gap-2"><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm shadow-blue-100 hover:bg-blue-600 hover:text-white"><MapPin size={14} /> 地圖</a>{(item.note || item.imageUrl) && <div className={`px-2 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-black uppercase ${isExpanded ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-400'}`}><StickyNote size={12}/> {isExpanded ? '已展開' : '細節'}</div>}</div></div>
+                      <div className="flex items-center gap-4 flex-wrap"><h4 className="text-3xl font-black text-slate-800 leading-tight tracking-tight">{item.spot}</h4><div className="flex gap-2"><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.spot)}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all inline-flex items-center gap-1.5 text-xs font-black shadow-sm">
+                        <MapPin size={14} /> 地圖</a>{(item.note || item.imageUrl) && <div className={`px-2 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-black uppercase ${isExpanded ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-400'}`}><StickyNote size={12}/> {isExpanded ? '已展開' : '細節'}</div>}</div></div>
                       {isExpanded && (<div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 space-y-4 animate-fade-in" onClick={e => e.stopPropagation()}>{item.imageUrl && (<div className="relative group/img overflow-hidden rounded-2xl border border-white shadow-sm max-w-md"><img src={item.imageUrl} alt={item.spot} className="w-full max-w-md h-auto rounded-2xl shadow-sm border border-white cursor-zoom-in" onError={e => e.target.style.display='none'} onClick={(e) => { e.stopPropagation(); window.open(item.imageUrl, '_blank'); }} /></div>)}<p className="text-slate-500 text-sm italic whitespace-pre-wrap leading-relaxed">{renderTextWithLinks(item.note) || "暫無說明內容"}</p></div>)}
                     </div>
                     <div className="flex flex-col gap-2 transition-all">
@@ -448,7 +447,7 @@ const App = () => {
   const [showAllNotes, setShowAllNotes] = useState(false); 
   const [expandedItems, setExpandedItems] = useState({}); 
 
-  // 🔐 Auth 監聽流程
+  // 1. 🔐 核心 Auth 監聽流程 (遵循 Rule 3)
   useEffect(() => {
     const initAppAuth = async () => {
       try {
@@ -465,22 +464,29 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 📊 旅程列表
+  // 2. 📊 監聽旅程列表 (Rule 1 & 3 Guarded)
   useEffect(() => {
     if (!user || (!isLoggedIn && !isAdmin)) return;
     const tripsRef = collection(fDb, 'artifacts', fAppId, 'public', 'data', 'trips');
     return onSnapshot(tripsRef, (snapshot) => {
       setTrips(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    }, (err) => { if (err.code === 'permission-denied') console.error("Trips Snap error"); });
+    }, (err) => { if (err.code === 'permission-denied') console.error("Trips Snap Permission Denied"); });
   }, [user, isLoggedIn, isAdmin]);
 
+  // 3. 監聽細部行程 (對接 0215a.txt 資料結構)
   useEffect(() => {
     if (!user || !tripId || !isLoggedIn) return;
     const itinRef = doc(fDb, 'artifacts', fAppId, 'public', 'data', 'itineraries', tripId);
     const unsubItin = onSnapshot(itinRef, (snap) => {
       if (snap.exists()) {
           const d = snap.data();
-          setItineraryData({ days: d.days || {}, checklist: d.checklist || [], expenses: d.expenses || [], customRates: d.customRates || {}, useCustom: d.useCustom || {} });
+          setItineraryData({ 
+            days: d.days || {}, 
+            checklist: d.checklist || [], 
+            expenses: d.expenses || [],
+            customRates: d.customRates || {},
+            useCustom: d.useCustom || {}
+          });
           setView('editor');
       }
     });
@@ -508,7 +514,8 @@ const App = () => {
 
   const handleCreate = async e => {
     e.preventDefault(); if (!user) return; setIsLoading(true);
-    const newId = crypto.randomUUID(); const days = {};
+    const newId = crypto.randomUUID();
+    const days = {};
     for (let i = 1; i <= Math.max(1, parseInt(tripInfo.duration)); i++) days[i] = { spots: [] };
     try {
       await setDoc(doc(fDb, 'artifacts', fAppId, 'public', 'data', 'trips', newId), { ...tripInfo, creator: user.uid, createdAt: new Date().toISOString() });
@@ -517,12 +524,12 @@ const App = () => {
     } catch (e) { console.error(e); } finally { setIsLoading(false); }
   };
 
-  // 🎨 樣式與 Favicon
+  // 🎨 樣式與 Favicon 注入
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script'); script.id = 'tailwind-cdn'; script.src = 'https://cdn.tailwindcss.com'; document.head.appendChild(script);
     }
-    const style = document.createElement('style'); style.id = 'premium-ui-engine-v6.0';
+    const style = document.createElement('style'); style.id = 'premium-ui-engine-v6.6';
     style.innerHTML = `
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
       html, body, #root { min-height: 100vh !important; width: 100% !important; background-color: #f8fafc !important; font-family: 'Noto Sans TC', sans-serif !important; }
@@ -573,7 +580,7 @@ const App = () => {
               ))}
             </div>
             <div className="text-right flex items-center gap-4">
-              <div className="hidden sm:block text-right"><div className="font-black text-slate-800 tracking-tight truncate max-w-[150px] leading-none">{tripInfo.city} 之旅</div><div className="text-[9px] font-bold text-slate-400 mt-1">{tripInfo.startDate}</div></div>
+              <div className="hidden sm:block text-right text-slate-700"><div className="font-black text-slate-800 tracking-tight truncate max-w-[150px] leading-none">{tripInfo.city} 之旅</div><div className="text-[9px] font-bold text-slate-400 mt-1">{tripInfo.startDate}</div></div>
               <button onClick={() => { setIsLoggedIn(false); setIsAdmin(false); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors shadow-sm bg-white rounded-xl"><LogOut size={20}/></button>
             </div>
           </nav>
